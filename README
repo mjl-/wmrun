@@ -1,0 +1,54 @@
+# status
+
+works.  may change.
+
+
+# intro
+
+wm/run is an alternative to wm/sh.  it accepts commands that it
+executes by sh(1).  wm/run is different from wm/sh in the following
+respects:
+
+- it doesn't pretend i/o of the shell, and programs started by the
+  shell, are part of the same textsoup.  instead, it keeps the i/o
+  (internally) separate and lets you navigate earlier commands and their
+  i/o.
+- Del kills the program currently running
+- file name completion with tab
+- vi-like command-line editing and history (similar to openbsd's pdksh)
+- different colors for commands, input and output
+
+
+# install
+
+change the "mkconfig" if you do not have $ROOT set.  now "mk install"
+to compile and install the files.
+
+when building from within inferno, insert SYSHOST=Inferno and ROOT=
+in the mk invocations to override the values in the mkconfig.
+
+
+# latest version
+
+the latest version can be found at:
+
+    http://www.ueber.net/code/r/wmrun
+
+
+# licence & author
+
+all files are in the public domain.  this code has been written by
+mechiel lukkien, reachable at mechiel@ueber.net.
+
+
+# todo
+
+- chording for text widgets?
+- indicate somewhere that partial utf-8 characters are lingering?
+- more ^x shortcut for text in text widgets?
+- keys for resizing the focused text widget?
+- button3-drag for plumb?
+- provide keys for inserting all completion matches?
+- there should be a way to type multi-line text.  e.g. by starting a vixen.
+- for now, there won't be a way to run multiple programs concurrently.
+- think of something for /dev/cons & /dev/consctl.

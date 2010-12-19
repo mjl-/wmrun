@@ -1,0 +1,30 @@
+<../../mkconfig
+
+TARG=\
+	run.dis\
+
+MODULES=\
+	run/complete.b\
+	run/edit.b\
+	run/list.b\
+
+SYSMODULES=\
+	arg.m\
+	bufio.m\
+	daytime.m\
+	draw.m\
+	keyboard.m\
+	names.m\
+	plumbmsg.m\
+	readdir.m\
+	sh.m\
+	string.m\
+	sys.m\
+	tk.m\
+	tkclient.m\
+	util0.m\
+	wait.m\
+
+DISBIN=$ROOT/dis/wm
+
+<$ROOT/mkfiles/mkdis

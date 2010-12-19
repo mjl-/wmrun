@@ -1,0 +1,274 @@
+.TH WM-RUN 1
+.SH NAME
+wm/run \- run shell commands
+.SH SYNOPSIS
+.B wm/run
+[
+.B -d
+] [
+.B -123Chi
+] [
+.I cmd
+.I ...
+]
+.SH DESCRIPTION
+.I Wm/run
+runs commands and displays the output.  It is similar to
+.IR wm-sh (1)
+but with several distinctive features:
+.IP \(bu
+The standard input, output and error, and commands and exit codes are managed separately, not as a single type of text.  Commands and their i/o can be displayed in several views.
+.IP \(bu
+``Del'' kills the currently running command.
+.IP \(bu
+File name completion with the tab key.
+.IP \(bu
+Vi-like command-line and input editing.
+.IP \(bu
+Directory and file navigation due to mouse and key bindings.
+
+.SS Options:
+If
+.I cmd
+is given on the command-line, it is executed as first command.  Otherwise ``lc'' is executed to compactly display the files in the current working directory.
+
+.TP
+.B -d
+Print debug statements.
+.TP
+.B -123
+Set the splitmode to 1, 2 or 3.  Can also be set at runtime through the
+.B "^x [123]"
+commands.
+.TP
+.B -C
+Do not show colors in output.  Also see command
+.B "^x c" .
+.TP
+.B -h
+Show multiple commands (``history'') at a time.  Also see
+.B "^x h" .
+.TP
+.B -i
+Show the input text widget.  Also see
+.B "^x i" .
+
+.I Wm/run
+shows an input entry at the bottom of its window, in which the user may enter a new command or input for a running command.  To the left of the input is a small rectangle, the color of which indicates what will happen with the input:
+.TP
+.I gray
+No command is running, a new command will be started.
+.TP
+.I green
+A command is running, no reads (by the program) on standard input are pending, no writes (to the program, by
+.IR wm/run )
+are pending.
+.TP
+.I blue
+Only one or more reads from the program are pending, no writes.
+.TP
+.I red
+Only one or more writes to the program are pending, no reads from the program.  Note that it is not possible to have both pending reads and pending writes.
+.PP
+Above the input entry is a line containing various bits of status information:  the current split mode, whether the command still holds references stdin/stdout/stderr, status and sequence number of the command, and the command itself.
+Above that are one or more text areas displaying the stdin, stdout and stderr.
+.PP
+.I Wm/run
+starts with a single text area that contains both stdout and stderr, with text from stderr displayed in red.  Stdin is hidden by default, but can be shown (toggled) with the
+.B "^x i"
+command.  This view mode is called ``splitmode 2''.  ``Splitmode 1'' has a single text area with stdin, stdout and stderr in it, ``splitmode 3'' has a text area for each of stdin, stdout, and stderr (with the possibility to hide stdin).  The mode can be set by the command-line options
+.B -123
+and with commands
+.BR "^x [123]" .
+.PP
+Several keyboard shortcuts operate on the ``selected'' text area, e.g. page up and page down.  The non-selected text areas are indicated by a black scroll bar.  The selected text area also contains the ``text selection'':  either the text selected by the mouse, or all text in case of no selection.
+.PP
+Each type of text is shown in a different color (on a black background):  blue for stdin, white for stdout, red for stderr, green for commands, a yellow ``ok'' for successful completion and non-successful exit statuses in orange.  Displaying colors can be disabled at startup by
+.B -C
+or toggled at runtime by
+.BR "^x c" .
+.PP
+.I Wm/run
+only shows one command at a time by default:  before starting a new command, text areas are cleared.  In this mode only stdin, stdout and stderr is shown in the text area's;  commands and statuses can only be found in the status line above the input entry.  Multiple commands (``history'') can be shown at the same time by the
+.B -h
+option or toggled at runtime by the
+.B "^x h"
+command.  When enabled, commands and statuses (in the colors mentioned earlier) are shown.
+
+.SH COMMANDS
+Normal commands can be started by typing them at the input entry and hitting return.  Several convenient keyboard shortcuts have been implemented, most starting with ``^x'' (control-x).  An ``x'' is displayed in the status line when ``^x'' has been pressed and the next character will be part of an ``^x''-command.
+
+.TP
+.B Del
+Kill the current program.
+.TP
+.BI tab " or " ^i
+Complete the file name at the word under cursor.
+.TP
+.BI ^n " and " ^p
+Display
+.I next
+and
+.I previous
+command and its i/o from history.
+.TP
+.BI ^d
+Send end-of-file to running program.  When no program is running, quit
+.IR wm/run .
+
+.TP
+.B "^x p"
+Plumb the text in the input entry, delete it if the plumb message found a destination.  Handy in combination with file name completion.
+.TP
+.B "^x n"
+Start a new instance of
+.IR wm/run .
+If the input entry is non-empty, use it as the initial command to start.  The current mode is passed along by command-line options.
+.TP
+.B "^x z"
+Clear all command history before the currently visible command.
+.TP
+.B "^x r"
+Run the current selection by starting ``sh -n'' and writing the selection to the shells stdin.
+.TP
+.B "^x \n"
+Run the program in the input entry with the current selection as sole input.
+.TP
+.B "^x c"
+Toggle color display.  A ``c'' in the status line indicates colors are shown.
+.TP
+.B "^x x"
+Toggle the debug flag.  Not shown in the status label.
+.TP
+.B "^x 0"
+Display first command in the history.
+.TP
+.B "^x $"
+Display last command (current command) in the history.
+.TP
+.B "^x k"
+Kill the current command.
+.TP
+.B "^x [123]"
+Activate split mode to 1, 2 or 3.
+.TP
+.B "^x [!@#]"
+Focus text area 1, 2 or 3 (stdin, stdout, stderr).  Note that ``[!@#]'' are shift-[123].
+.TP
+.B "^x i"
+Toggle visibility of text area with stdin, only for split modes 2 and 3.
+.TP
+.B "^x h"
+Toggle displaying multiple commands (``history'').
+.TP
+.B "^x l"
+Redraw the text areas.  Modifications are lost.
+.TP
+.B "^x ."
+Run ``lc'' to compactly display the contents of this directory.
+.TP
+.B "^x F"
+Compactly display all files in the file tree by calling
+.IR find (1).
+.TP
+.B "^x f"
+Compactly display most files in the file tree.
+.TP
+.B "^x d"
+Compactly display only directories in the file tree.
+
+.SH INPUT
+The input entry accepts most standard Inferno Tk bindings, but also has an vi-like editing mode inspired by ``set -o vi'' found in various korn shells.  The modification and motion commands described below are supported.   Many accept numeric repeat modifiers.  Details can be found in external vi documentation, or the source.  Command mode (as opposed to insert mode) is indicated by a ``['' in the status line.
+.TP
+.B [iIaA]
+Change to insert mode.
+.TP
+.BI [sSC] " and " cc " or "c<motion>"
+Substitute (delete text and change to insert mode).
+.TP
+.BI r<char>
+Replace character under cursor by
+.IR char .
+.TP
+.BI Y " or " yy " or " y<motion>
+Yank text to the internal buffer.
+.TP
+.BI p " or " P
+Paste text from the internal buffer.  The internal buffer is set by the yank command and to text deleted by modification commands.
+.TP
+.BI .
+Repeat previous command (insertions cannot be repeated).
+.TP
+.BI u " and '^r'
+Undo and redo changes, multiple levels implemented.
+.TP
+.BI j " and " k
+Navigate through input entry history.  Only commands (not input for running commands) are stored in history.
+.TP
+.BI <repeat>G " or " <repeat>gg
+Jump to the input entry with the given sequence number.
+.TP
+.BI D " or " dd " or " d<motion>
+Delete text.
+.TP
+.BI x " or " X
+Delete character under or before cursor.
+
+.PP
+The remainder are motion commands, they only change the cursor and can act as modifiers for modification commands.
+.TP
+.B ^
+To first non-blank of line.
+.TP
+.B 0
+To first character of line.
+.TP
+.B $
+To last cursor position of line.
+.TP
+.B [wWeEbB]
+Navigate words.  [wWeE] move forward, [bB] backward.  [wW] stop before a new word, [eE] stop after a new word.  [web] consider a words to be separated by whitespace or punctuation.  [WEB] consider words to be separated only by whitespace.
+.TP
+.B h
+Move one character left.
+.TP
+.B l
+Move one character right.
+.TP
+.B <repeat>|
+Move to character
+.IR repeat .
+.TP
+.B %
+Jump to matching closing or opening character, one of ``[{(]})'', taking nesting into account.
+
+.SH MOUSE
+For now, only plumbing with button3 is supported by clicking on text.  The word under the mouse click is plumbed, taking off a trailing colon (from separating file names with line numbers from an error message) when an initial plumb message did not find a destination.
+.PP
+If the path to be plumbed is a directory, the command ``cd $dir && lc'' is executed instead.  If a command is already running, that command is started in a new instance of
+.IR wm/run .
+
+.SH SOURCE
+/appl/wm/run.b
+.br
+/appl/wm/run/complete.b
+.br
+/appl/wm/run/edit.b
+.br
+/appl/wm/run/list.b
+
+.SH SEE ALSO
+.IR sh (1),
+.IR wm-sh (1),
+.IR lc (1),
+.IR mc (1),
+.IR find (1).
+
+.SH BUGS
+Chording is not yet supported.  No other way to access the snarf buffers is provided.
+.PP
+Only a file with zero permissions is bound on
+.B /dev/cons
+and
+.BR /dev/consctl ,
+programs cannot use them.
