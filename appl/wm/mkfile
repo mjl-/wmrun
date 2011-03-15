@@ -22,7 +22,6 @@ SYSMODULES=\
 	sys.m\
 	tk.m\
 	tkclient.m\
-	util0.m\
 	wait.m\
 
 DISBIN=$ROOT/dis/wm

@@ -29,9 +29,6 @@ include "tkclient.m";
 	tkclient: Tkclient;
 include "keyboard.m";
 	kb: Keyboard;
-include "util0.m";
-	util: Util0;
-	warn, min, max, pid, kill, killgrp, rev: import util;
 
 include "run/complete.b";
 include "run/edit.b";
@@ -249,8 +246,6 @@ init(ctxt: ref Draw->Context, args: list of string)
 	shcontext = Context.new(ctxt);
 	tk = load Tk Tk->PATH;
 	tkclient = load Tkclient Tkclient->PATH;
-	util = load Util0 Util0->PATH;
-	util->init();
 
 	sys->pctl(Sys->NEWPGRP|Sys->FORKENV|Sys->FORKNS|Sys->FORKFD, nil);
 
@@ -341,17 +336,9 @@ init(ctxt: ref Draw->Context, args: list of string)
 		tk->pointer(top, *s);
 
 	s := <-top.ctxt.ctl or
-	s = <-top.wreq =>
+	s = <-top.wreq or
+	s = <-wmctl =>
 		tkclient->wmctl(top, s);
-
-	menu := <-wmctl =>
-		case menu {
-		"exit" =>
-			killgrp(pid());
-			return;
-		* =>
-			tkclient->wmctl(top, menu);
-		}
 
 	s := <-editc =>
 		cmd(s);
@@ -1166,6 +1153,48 @@ xsay(s: string)
 		xwarn(s);
 }
 
+pid(): int
+{
+	return sys->pctl(0, nil);
+}
+
+min(a, b: int): int
+{
+	if(a < b)
+		return a;
+	return b;
+}
+
+max(a, b: int): int
+{
+	if(a > b)
+		return a;
+	return b;
+}
+
+progctl(pid: int, s: string)
+{
+	sys->fprint(sys->open(sprint("/prog/%d/ctl", pid), Sys->OWRITE), "%s", s);
+}
+
+kill(pid: int)
+{
+	progctl(pid, "kill");
+}
+
+killgrp(pid: int)
+{
+	progctl(pid, "killgrp");
+}
+
+rev[T](l: list of T): list of T
+{
+	r: list of T;
+	for(; l != nil; l = tl l)
+		r = hd l::r;
+	return r;
+}
+
 say(s: string)
 {
 	if(dflag)
@@ -1181,6 +1210,11 @@ quit()
 workdir(): string
 {
 	return sys->fd2path(sys->open(".", Sys->OREAD));
+}
+
+warn(s: string)
+{
+	sys->fprint(sys->fildes(2), "%s\n", s);
 }
 
 fail(s: string)
