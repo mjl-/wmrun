@@ -37,6 +37,7 @@ include "run/list.b";
 WmRun: module {
 	init:	fn(ctxt: ref Draw->Context, argv: list of string);
 };
+Shcmd: type WmRun;
 
 dflag: int;
 plumbed: int;
@@ -618,15 +619,22 @@ plumb(s: string): int
 
 cmd(s: string)
 {
-	if(s != "tab")
+	case s {
+	"tab" or
+	"pgup" or
+	"pgdown" or
+	"home" or
+	"end" =>
+		{}
+	* =>
 		tkcompletehide();
+	}
 	case s {
 	"tab" =>
 		e := tkeditstr();
 		si := (ref *e).rskipcl(Nonwhitespace);
 		ei := (ref *e).skipcl(Nonwhitespace);
-		if(si != ei)
-			complete(e.s, si, ei);
+		complete(e.s, si, ei);
 	"next" =>
 		if(curcmd != nil && curcmd.next != nil) {
 			curcmd = curcmd.next;
@@ -647,14 +655,26 @@ cmd(s: string)
 	"del" =>
 		if(runpid)
 			killprog();
-	"pgup" =>
-		tkcmd(sprint(".t.%s.t yview scroll -1 pages", textwidgets[textfocus]));
+	"pgup" or
 	"pgdown" =>
-		tkcmd(sprint(".t.%s.t yview scroll 1 pages", textwidgets[textfocus]));
+		n := -1;
+		if(s == "pgdown")
+			n = 1;
+		if(showcomplete)
+			w := ".c.complete";
+		else
+			w = sprint(".t.%s.t", textwidgets[textfocus]);
+		tkcmd(sprint("%s yview scroll %d pages", w, n));
 	"home" =>
-		tkcmd(sprint(".t.%s.t see cmdstart", textwidgets[textfocus]));
+		if(showcomplete)
+			tkcmd(".c.complete see 1.0");
+		else
+			tkcmd(sprint(".t.%s.t see cmdstart", textwidgets[textfocus]));
 	"end" =>
-		tkcmd(sprint(".t.%s.t see end", textwidgets[textfocus]));
+		if(showcomplete)
+			tkcmd(".c.complete see end");
+		else
+			tkcmd(sprint(".t.%s.t see end", textwidgets[textfocus]));
 	"esc" =>
 		case editmode {
 		Einsert =>
