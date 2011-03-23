@@ -85,14 +85,18 @@ Only one or more writes to the program are pending, no reads from the program.
 Note that it is not possible to have both pending reads and pending writes.
 .PP
 Above the input entry is a line containing various bits of status information:  the current
-.IR splitmode ,
+.I splitmode
+(numeric),
+whether stdin is shown (`i'), whether multiple commands are shown (`h') or only the current, whether text is printed in color (`c'),
 whether the command still holds references stdin/stdout/stderr, status and sequence number of the command, and the command itself.
 Above that are one or more text areas displaying the stdin, stdout and stderr.
 .PP
 .I Wm/run
 starts with a single text area that contains both stdout and stderr, with text from stderr displayed in orange.
 Stdin is hidden by default, but visibility can be toggled with
-.LR "^x i" .
+.LR "^x i"
+or by clicking the
+.LR `i' .
 This view mode is called
 .IR "splitmode 2" .
 .I "Splitmode 1"
@@ -100,9 +104,12 @@ has a single text area with stdin, stdout and stderr in it.
 .I "Splitmode 3"
 has a text area for each of stdin, stdout, and stderr (with the possibility to hide stdin).
 The mode can be set by the command-line options
-.B -123
+.BR -123
 and with
-.LR "^x [123]" .
+.LR "^x [123]" ,
+or cycled through by clicking the
+.I splitmode
+number.
 .PP
 Several keyboard shortcuts, such as page up and down, operate on the
 .IR "selected text area" .
@@ -118,16 +125,19 @@ for successful completion and non-successful exit statuses in red.
 Displaying colors can be disabled at startup by
 .B -C
 or toggled at runtime by
-.LR "^x c" .
+.LR "^x c"
+or clicking the
+.LR `c' .
 .PP
 .I Wm/run
 only shows one command at a time by default:  before starting a new command, text areas are cleared.
 In this mode only stdin, stdout and stderr is shown in the text area's, commands and statuses can only be found in the status line above the input entry.
 Multiple commands (`history') can be shown at the same time by the
 .B -h
-option or toggled at runtime by the
+option or toggled at runtime by
 .LR "^x h"
-command.
+or by clicking the
+.LR `h' .
 When enabled, commands and statuses (in the colors mentioned earlier) are shown.
 
 .SH COMMANDS
@@ -256,7 +266,7 @@ in the status line.
 .BR [iIaA]
 Change to insert mode.
 .TP
-.BR [sSC] " and " cc " or "c<motion>"
+.BR [sSC] " and " cc " or " c<motion>
 Substitute (delete text and change to insert mode).
 .TP
 .BR r<char>

@@ -56,7 +56,6 @@ mechiel lukkien, reachable at mechiel@ueber.net.
 - indicate somewhere that partial utf-8 characters are lingering?
 - more ^x shortcut for text in text widgets?
 - keys for resizing the focused text widget?
-- button3-drag for plumb?
 - provide keys for inserting all completion matches?
 - there should be a way to type multi-line text.  e.g. by starting a vixen.
 - for now, there won't be a way to run multiple programs concurrently.

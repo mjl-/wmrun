@@ -172,6 +172,10 @@ tkcmds0 := array[] of {
 "label .s.gen		-width 5w",
 "label .s.pad4		-width 1w -text {: }",
 "label .s.cmd",
+"bind .s.showhist	<ButtonRelease-1> +{send edit cycle showhist}",
+"bind .s.showin		<ButtonRelease-1> +{send edit cycle showin}",
+"bind .s.showcolors	<ButtonRelease-1> +{send edit cycle showcolors}",
+"bind .s.splitmode	<ButtonRelease-1> +{send edit cycle splitmode}",
 "pack .s.editmode .s.splitmode .s.showin .s.showhist .s.showcolors .s.pad1 .s.f0 .s.f1 .s.f2 .s.pad2 .s.status .s.pad3 .s.gen .s.pad4 .s.cmd -side left",
 
 "frame .e",
@@ -668,7 +672,25 @@ cmd(s: string)
 			tkseteditmode();
 		}
 	* =>
-		warn(sprint("other cmd %q", s));
+		if(str->prefix("cycle ", s)) {
+			case s[len "cycle ":] {
+			"showhist" =>
+				showhist = !showhist;
+				tksetshowhist();
+				redraw();
+			"showin" =>
+				toggleshowin();
+			"showcolors" =>
+				showcolors = !showcolors;
+				tktags(showcolors);
+				tksetshowcolors();
+			"splitmode" =>
+				tksplitmodeset((splitmode+1)%3);
+			* =>
+				raise "other cycle";
+			}
+		} else
+			warn(sprint("other cmd %q", s));
 	}
 }
 
@@ -765,14 +787,7 @@ ctlx(c: int)
 		if(splitmode >= Msplit3)
 			tktextfocus(2);
 	'i' =>
-		if(splitmode == Msplit2 || splitmode == Msplit3) {
-			if(showin)
-				tkcmd("pack forget .t.in");
-			else
-				tkcmd("pack .t.in -before .t.outerr -fill both -expand 1");
-			showin = !showin;
-			tksetshowin();
-		}
+		toggleshowin();
 	'h' =>
 		showhist = !showhist;
 		tksetshowhist();
@@ -796,6 +811,18 @@ ctlx(c: int)
 	}
 	editmode = Einsert;
 	tkseteditmode();
+}
+
+toggleshowin()
+{
+	if(splitmode != Msplit2 && splitmode != Msplit3)
+		return;
+	if(showin)
+		tkcmd("pack forget .t.in");
+	else
+		tkcmd("pack .t.in -before .t.outerr -fill both -expand 1");
+	showin = !showin;
+	tksetshowin();
 }
 
 recordundo()
@@ -1190,7 +1217,13 @@ tkset(w: string, v: int, opts: string)
 {
 	if(v < 0 || v >= len opts)
 		v = len opts-1;
-	tklabel(w, opts[v:v+1]);
+	s := opts[v:v+1];
+	if(s == " " && len opts == 2) {
+		s = opts[1:2];
+		tkcmd(w+" configure -fg #a0a0a0");
+	} else
+		tkcmd(w+" configure -fg black");
+	tklabel(w, s);
 }
 
 tklabel(w: string, v: string)
