@@ -69,6 +69,7 @@ textfocus := 1;    # text frame with focus, outerr by default
 
 lastmouse: int;    # last mouse buttons
 lastb1, lastb2, lastb3: string;  # text widget index
+downb1, downb2, downb3: string;  # index of last press
 
 # on command finish, status/exception goes here
 statusc: chan of string;
@@ -442,9 +443,9 @@ warner()
 }
 
 # could do more with mouse movements, e.g. chording
-mouse(s: string)
+mouse(m: string)
 {
-	(nil, l) := sys->tokenize(s, " ");
+	(nil, l) := sys->tokenize(m, " ");
 	b := int hd l;
 	w := hd tl l;
 	coord := hd tl tl l;
@@ -457,15 +458,29 @@ mouse(s: string)
 	b2: con 1<<1;
 	b3: con 1<<2;
 
-	if((lastmouse & b3) && (~b & b3)) {
-		t := tkcmd(w+sprint(" get {%s linestart} {%s lineend}", pos, pos));
-		o := int str->splitstrr(pos, ".").t1;
-		for(si := o; si > 0 && !str->in(t[si-1], Whitespace); si--)
-			{}
-		for(ei := o; ei < len t && !str->in(t[ei], Whitespace); ei++)
-			{}
-		path := t[si:ei];
-		if(si != ei) {
+	if((b & b1) && (b & b2) && (~lastmouse & b2)) {
+		tkclient->snarfput(tkcmd(sprint("%s get sel.first sel.last", w)));
+		tkcmd(sprint("%s delete sel.first sel.last", w));
+	}
+	else if((b & b1) && (b & b3) && (~lastmouse & b3)) {
+		tkcmd(sprint("%s delete sel.first sel.last", w));
+		t := tkclient->snarfget();
+		tkcmd(sprint("%s insert insert '%s", w, t));
+		tkcmd(sprint("%s tag add sel {insert -%dc} insert", w, len t));
+	}
+	else if((lastmouse & b3) && (~b & b3) && ((lastmouse|b) & (b1|b2)) == 0) {
+		if(downb3 != pos)
+			path := tkcmd(w+" get sel.first sel.last");
+		else {
+			t := tkcmd(w+sprint(" get {%s linestart} {%s lineend}", pos, pos));
+			o := int str->splitstrr(pos, ".").t1;
+			for(si := o; si > 0 && !str->in(t[si-1], Whitespace); si--)
+				{}
+			for(ei := o; ei < len t && !str->in(t[ei], Whitespace); ei++)
+				{}
+			path = t[si:ei];
+		}
+		if(path != nil) {
 			dir := path;
 			if(!curcmd.e.busy && !isabs(path) && curcmd.e.wd != workdir())
 				dir = curcmd.e.wd+"/"+dir;
@@ -481,10 +496,30 @@ mouse(s: string)
 			}
 		}
 	}
+	else if((b & b3) && ((lastmouse|b) & (b1|b2)) == 0) {
+		if(~lastmouse & b3) {
+			tkcmd(sprint("%s mark set insert %s", w, pos));
+			tkcmd(w+" tag remove sel 1.0 end");
+		}
+		else if(lastb3 != pos) {
+			tkcmd(w+" tag remove sel 1.0 end");
+			(s, e) := (downb3, pos);
+			(l0, c0) := str->splitstrl(s, ".");
+			(l1, c1) := str->splitstrl(e, ".");
+			if(c0 != nil) c0 = c0[1:];
+			if(c1 != nil) c1 = c1[1:];
+			if(int l1 < int l0 || (int l1 == int l0 && int c1 < int c0))
+				(s, e) = (e, s);
+			tkcmd(sprint("%s tag add sel %s %s", w, s, e));
+		}
+	}
 
 	if(b & b1) lastb1 = pos;
 	if(b & b2) lastb2 = pos;
 	if(b & b3) lastb3 = pos;
+	if((b & b1) && (~lastmouse & b1)) downb1 = pos;
+	if((b & b2) && (~lastmouse & b2)) downb2 = pos;
+	if((b & b3) && (~lastmouse & b3)) downb3 = pos;
 	lastmouse = b;
 }
 

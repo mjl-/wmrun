@@ -43,8 +43,9 @@ mechiel lukkien, reachable at mechiel@ueber.net.
 
 # todo
 
+- chording for input entry
 - shortcut to move to start of command?  or otherwise better scrolling.  or better:  start in don't-scroll mode by default.
-- history for command input
+- history for command input (stdin)
 - for tab completion, don't remove text if there is no match
 - for tab completion, allow pgup/pgdown keys to work on completion text area
 - for tab completion, use mc to display matches?  currently long lists are annoying to read.
@@ -53,7 +54,6 @@ mechiel lukkien, reachable at mechiel@ueber.net.
 - history is not recorded properly when last action was a tab
 - allow for literal insertion of tab character, eg ^v<char>
 - make a var that holds all command i/o, so don't only keep it per command.  needed for redrawing with showhist (when i/o from previously running command comes in).  also clarify in man page that one program can read stdin (the latest), but that the others can still run in the background and write to their stdout & stderr.
-- chording for text widgets?
 - indicate somewhere that partial utf-8 characters are lingering?
 - more ^x shortcut for text in text widgets?
 - keys for resizing the focused text widget?
