@@ -243,7 +243,8 @@ Move to character
 Jump to matching closing or opening character, one of ``[{(]})'', taking nesting into account.
 
 .SH MOUSE
-For now, only plumbing with button3 is supported by clicking on text.  The word under the mouse click is plumbed, taking off a trailing colon (from separating file names with line numbers from an error message) when an initial plumb message did not find a destination.
+Chording is implemented for the text areas and the input entry.  Chording in the input entry switches to insert mode and records the input entry text before the chord for undo/redo.
+Plumbing with button3 is supported by clicking on text.  The selection or word under the mouse release is plumbed, taking off a trailing colon (from separating file names with line numbers from an error message) when an initial plumb message did not find a destination.
 .PP
 If the path to be plumbed is a directory, the command ``cd $dir && lc'' is executed instead.  If a command is already running, that command is started in a new instance of
 .IR wm/run .
@@ -265,8 +266,6 @@ If the path to be plumbed is a directory, the command ``cd $dir && lc'' is execu
 .IR find (1).
 
 .SH BUGS
-Chording is not yet supported.  No other way to access the snarf buffers is provided.
-.PP
 Only a file with zero permissions is bound on
 .B /dev/cons
 and

@@ -153,8 +153,8 @@ tkcmds0 := array[] of {
 "frame .c",
 "text .c.complete	-yscrollcommand {.c.s set}",
 "scrollbar .c.s		-command {.c.complete yview}",
-"pack .c.s -fill y -side left",
-"pack .c.complete -fill both -expand 1 -side right",
+"pack .c.s		-fill y -side left",
+"pack .c.complete	-fill both -expand 1 -side right",
 
 "frame .s",
 "label .s.editmode	-width 1w",
@@ -175,7 +175,7 @@ tkcmds0 := array[] of {
 "pack .s.editmode .s.splitmode .s.showin .s.showhist .s.showcolors .s.pad1 .s.f0 .s.f1 .s.f2 .s.pad2 .s.status .s.pad3 .s.gen .s.pad4 .s.cmd -side left",
 
 "frame .e",
-"label .e.mode	-width 1w -text { }",
+"label .e.mode		-width 1w -text { }",
 "entry .e.edit",
 "bind .e.edit	{<Key-\t>} {send edit tab}",
 "bind .e.edit	<Key-\u007f> {send edit del}",
@@ -185,17 +185,17 @@ tkcmds0 := array[] of {
 "bind .e.edit	<Control-d> {send edit eof}",
 "bind .e.edit	<Control-r> {send key %K}",
 "bind .e.edit	<Key> {send key %K}",
-"pack .e.mode -side left",
-"pack .e.edit -fill x -expand 1 -side right",
+"pack .e.mode		-side left",
+"pack .e.edit		-fill x -expand 1 -side right",
 
-"pack .t.outerr -fill both -expand 1",
-"pack .t -fill both -expand 1",
-"pack .s -fill x",
-"pack .e -fill x",
+"pack .t.outerr		-fill both -expand 1",
+"pack .t		-fill both -expand 1",
+"pack .s		-fill x",
+"pack .e		-fill x",
 
 "focus .e.edit",
 "pack propagate . 0",
-". configure -width 80w -height 35h",
+". configure -width 100w -height 35h",
 };
 
 # additional binds, needing keyboard.m
@@ -210,6 +210,11 @@ tkbinds()
 			tkcmd(sprint("bind .t.%s.t <ButtonPress-%d> +{send mouse %%s %%W @%%x,%%y}", hd l, hd b));
 			tkcmd(sprint("bind .t.%s.t <ButtonRelease-%d> +{send mouse %%s %%W @%%x,%%y}", hd l, hd b));
 		}
+
+	for(b = list of {1, 2, 3}; b != nil; b = tl b) {
+		tkcmd(sprint("bind .e.edit <ButtonPress-%d> +{send emouse %%s @%%x,%%y}", hd b));
+		tkcmd(sprint("bind .e.edit <ButtonRelease-%d> +{send emouse %%s @%%x,%%y}", hd b));
+	}
 }
 
 tags := array[] of {"in", "out", "err", "cmd", "status", "ok"};
@@ -310,9 +315,11 @@ init(ctxt: ref Draw->Context, args: list of string)
 	editc := chan of string;
 	keyc := chan of string;
 	mousec := chan of string;
+	emousec := chan of string;
 	tk->namechan(top, editc, "edit");
 	tk->namechan(top, keyc, "key");
 	tk->namechan(top, mousec, "mouse");
+	tk->namechan(top, emousec, "emouse");
 	tkcmds(tkcmds0);
 	tkbinds();
 	tktags(showcolors);
@@ -352,6 +359,10 @@ init(ctxt: ref Draw->Context, args: list of string)
 
 	s := <-mousec =>
 		mouse(s);
+		tkup();
+
+	s := <-emousec =>
+		emouse(s);
 		tkup();
 
 	s := <-statusc =>
@@ -442,7 +453,7 @@ warner()
 		warn(<-warnc);
 }
 
-# could do more with mouse movements, e.g. chording
+# mouse on text widgets
 mouse(m: string)
 {
 	(nil, l) := sys->tokenize(m, " ");
@@ -521,6 +532,69 @@ mouse(m: string)
 	if((b & b2) && (~lastmouse & b2)) downb2 = pos;
 	if((b & b3) && (~lastmouse & b3)) downb3 = pos;
 	lastmouse = b;
+}
+
+# mouse on input entry
+eprevb: int;
+especial: int;
+emouse(m: string)
+{
+	l := sys->tokenize(m, " ").t1;
+	b := int hd l;
+	coord := hd tl l;
+	pos := tkcmd(".e.edit index "+coord);
+	say(sprint("emouse, b %d, coord %s, pos %s", b, coord, pos));
+	if(str->prefix("!", pos))
+		return;
+
+	b1, b2, b3: con 1<<iota;
+
+	if((b&b1) && (b&b2) && (~eprevb&b2) && (~especial&b2)) {
+		recordundo();
+		keys = nil;
+		editmode = Einsert;
+		tkseteditmode();
+		keyeditorig = tkeditstr();
+
+		t: string;
+		if(tkcmd(".e.edit selection present") == "1") {
+			t = tkcmd(".e.edit get");
+			s := tkcmd(".e.edit index sel.first");
+			e := tkcmd(".e.edit index sel.last");
+			t = t[int s:int e];
+			tkcmd(".e.edit delete sel.first sel.last");
+		}
+		tkclient->snarfput(t);
+		especial |= b2;
+	}
+	else if((b&b1) && (b&b3) && (~eprevb&b3) && (~especial&b3)) {
+		recordundo();
+		keys = nil;
+		editmode = Einsert;
+		tkseteditmode();
+		keyeditorig = tkeditstr();
+
+		t := tkclient->snarfget();
+		if(tkcmd(".e.edit selection present") != "1")
+			s := e := int tkcmd(".e.edit index insert");
+		else {
+			s = int tkcmd(".e.edit index sel.first");
+			e = int tkcmd(".e.edit index sel.last");
+			if(s > e)
+				(s, e) = (e, s);
+			tkcmd(sprint(".e.edit delete %d %d", s, e));
+		}
+		tkcmd(sprint(".e.edit insert %d '%s", s, t));
+		tkcmd(sprint(".e.edit selection range %d {%d +%dc}", s, s, len t));
+		tkcmd(sprint(".e.edit icursor %d", s));
+		especial |= b3;
+	}
+	else if(!especial && (~b&b1) && (eprevb&b1))
+		tkcmd(sprint(".e.edit icursor %s", pos));
+
+	eprevb = b;
+	if(b == 0)
+		especial = 0;
 }
 
 plumb(s: string): int
@@ -754,8 +828,12 @@ key(c: int)
 	}
 
 	if(editmode == Einsert) {
-		tkcmd(".e.edit delete sel.first sel.last");
-		tkedit(e.i, e.i, sprint("%c", c), e.i+1);
+		i := ei := e.i;
+		if(tkcmd(".e.edit selection present") == "1") {
+			i = int tkcmd(".e.edit index sel.first");
+			ei = int tkcmd(".e.edit index sel.last");
+		}
+		tkedit(i, ei, sprint("%c", c), i+1);
 		return;
 	} else if(editmode == Ectlx) {
 		ctlx(c);
