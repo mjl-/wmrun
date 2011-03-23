@@ -204,10 +204,11 @@ tkbinds()
 	tkcmd(sprint("bind .e.edit <Key-%c> {send edit pgdown}", kb->Pgdown));
 	tkcmd(sprint("bind .e.edit <Key-%c> {send edit esc}", kb->Esc));
 
-	for(l := list of {"in", "outerr", "err"}; l != nil; l = tl l) {
-		tkcmd(sprint("bind .t.%s.t <ButtonPress> {send mouse %%s %%W @%%x,%%y}", hd l));
-		tkcmd(sprint("bind .t.%s.t <ButtonRelease> {send mouse %%s %%W @%%x,%%y}", hd l));
-	}
+	for(l := list of {"in", "outerr", "err"}; l != nil; l = tl l)
+		for(b := list of {1, 2, 3}; b != nil; b = tl b) {
+			tkcmd(sprint("bind .t.%s.t <ButtonPress-%d> +{send mouse %%s %%W @%%x,%%y}", hd l, hd b));
+			tkcmd(sprint("bind .t.%s.t <ButtonRelease-%d> +{send mouse %%s %%W @%%x,%%y}", hd l, hd b));
+		}
 }
 
 tags := array[] of {"in", "out", "err", "cmd", "status", "ok"};
@@ -1124,9 +1125,9 @@ tkup()
 tkcmd(s: string): string
 {
 	r := tk->cmd(top, s);
-	if(r != nil && r[0] == '!')
+	if(r != nil && r[0] == '!' && dflag)
 		warn(sprint("tkcmd: %q: %s", s, r));
-	if(dflag)
+	if(dflag > 1)
 		say(sprint("tk: %s -> %s", s, r));
 	return r;
 }

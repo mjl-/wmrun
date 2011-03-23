@@ -52,7 +52,6 @@ mechiel lukkien, reachable at mechiel@ueber.net.
 - don't catch non-fail: exceptions
 - history is not recorded properly when last action was a tab
 - allow for literal insertion of tab character, eg ^v<char>
-- check whether position retrieved from mouse button is correct
 - make a var that holds all command i/o, so don't only keep it per command.  needed for redrawing with showhist (when i/o from previously running command comes in).  also clarify in man page that one program can read stdin (the latest), but that the others can still run in the background and write to their stdout & stderr.
 - chording for text widgets?
 - indicate somewhere that partial utf-8 characters are lingering?
