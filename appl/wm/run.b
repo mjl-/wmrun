@@ -896,7 +896,7 @@ start(x: string)
 	if(x == nil)
 		return;
 	(n, err) := sh->parse(x);
-	if(err == nil & n == nil)
+	if(err == nil && n == nil)
 		return;
 	cmd := ref Cmd (++cmdgen, array[3] of ref Sys->FileIO, array[3] of {* => -1}, "", x, 0, "", "", nil);
 	history.append(cmd);
@@ -969,9 +969,10 @@ run(cmd: ref Cmd, args: list of ref sh->Listnode, sherr: string, pidc: chan of (
 
 	spawn mkfio(rc := chan of (ref F, string));
 	(f, err) := <-rc;
-	pidc <-= (pid(), err);
-	if(err != nil)
+	if(err != nil) {
+		pidc <-= (-1, err);
 		return;
+	}
 
 	fpidc := chan of int;
 	spawn fread(cmd, f.io, inc, fpidc);
@@ -981,6 +982,8 @@ run(cmd: ref Cmd, args: list of ref sh->Listnode, sherr: string, pidc: chan of (
 	spawn fwrite(cmd, f.e, errc, fpidc);
 	cmd.pids[2] = <-fpidc;
 	cmd.f = array[] of {f.io, f.io, f.e};
+
+	pidc <-= (pid(), nil);
 
 	{
 		if(sherr != nil)
