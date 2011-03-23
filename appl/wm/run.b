@@ -182,13 +182,13 @@ tkcmds0 := array[] of {
 "frame .e",
 "label .e.mode		-width 1w -text { }",
 "entry .e.edit",
-"bind .e.edit	{<Key-\t>} {send edit tab}",
 "bind .e.edit	<Key-\u007f> {send edit del}",
 "bind .e.edit	<Control-n> {send edit next}",
 "bind .e.edit	<Control-p> {send edit prev}",
 "bind .e.edit	<Control-x> {send edit x}",
 "bind .e.edit	<Control-d> {send edit eof}",
 "bind .e.edit	<Control-r> {send key %K}",
+"bind .e.edit	<Control-v> {send key %K}",
 "bind .e.edit	<Key> {send key %K}",
 "pack .e.mode		-side left",
 "pack .e.edit		-fill x -expand 1 -side right",
@@ -620,7 +620,6 @@ plumb(s: string): int
 cmd(s: string)
 {
 	case s {
-	"tab" or
 	"pgup" or
 	"pgdown" or
 	"home" or
@@ -630,11 +629,6 @@ cmd(s: string)
 		tkcompletehide();
 	}
 	case s {
-	"tab" =>
-		e := tkeditstr();
-		si := (ref *e).rskipcl(Nonwhitespace);
-		ei := (ref *e).skipcl(Nonwhitespace);
-		complete(e.s, si, ei);
 	"next" =>
 		if(curcmd != nil && curcmd.next != nil) {
 			curcmd = curcmd.next;
@@ -860,12 +854,22 @@ recordundo()
 	}
 }
 
+ctrlv: int;
 key(c: int)
 {
 	say(sprint("key, c %c, editmode %d", c, editmode));
-	e := tkeditstr();
 
-	if(c == '\n' && (editmode == Einsert || editmode == Eesc)) {
+	if(editmode == Ectlx)
+		return ctlx(c);
+
+	if(c == 'v'-16r60) {
+		ctrlv = 1;
+		return;
+	}
+	v := ctrlv;
+	ctrlv = 0;
+	e := tkeditstr();
+	if(c == '\n' && !v) {
 		tkcompletehide();
 		if(e.s == nil)
 			return;
@@ -877,10 +881,15 @@ key(c: int)
 			start(e.s);
 		editmode = Einsert;
 		tkseteditmode();
-		return;
 	}
 
 	if(editmode == Einsert) {
+		if(c == '\t' && !v) {
+			si := (ref *e).rskipcl(Nonwhitespace);
+			ei := (ref *e).skipcl(Nonwhitespace);
+			complete(e.s, si, ei);
+			return;
+		}
 		i := ei := e.i;
 		if(tkcmd(".e.edit selection present") == "1") {
 			i = int tkcmd(".e.edit index sel.first");
@@ -888,10 +897,8 @@ key(c: int)
 		}
 		tkedit(i, ei, sprint("%c", c), i+1);
 		return;
-	} else if(editmode == Ectlx) {
-		ctlx(c);
-		return;
 	}
+
 	if(keys == nil)
 		keys = ref Str;
 	keys.s[len keys.s] = c;

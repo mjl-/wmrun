@@ -44,10 +44,7 @@ mechiel lukkien, reachable at mechiel@ueber.net.
 # todo
 
 - history for command input (stdin)
-- don't catch non-fail: exceptions
-- allow for literal insertion of tab character, eg ^v<char>
 - make a var that holds all command i/o, so don't only keep it per command.  needed for redrawing with showhist (when i/o from previously running command comes in).  also clarify in man page that one program can read stdin (the latest), but that the others can still run in the background and write to their stdout & stderr.
-- there should be a way to type multi-line text.  e.g. by starting a vixen.
 - provide keys for inserting all completion matches?
 - indicate somewhere that partial utf-8 characters are lingering?
 - more/less ^x shortcuts for text in text widgets?

@@ -165,6 +165,12 @@ Scroll the selected text area to make the start/end of the command become visibl
 .BI tab " or " ^i
 Complete the file name at the word under cursor.
 .TP
+.BI "^v<char>"
+Insert literal
+.IR char .
+Useful for executing commands with literal tab or newline.
+Shell quoting rules must still be obeyed.
+.TP
 .BI ^n " and " ^p
 Display
 .I next
