@@ -74,7 +74,7 @@ Above the input entry is a line containing various bits of status information:  
 Above that are one or more text areas displaying the stdin, stdout and stderr.
 .PP
 .I Wm/run
-starts with a single text area that contains both stdout and stderr, with text from stderr displayed in red.  Stdin is hidden by default, but can be shown (toggled) with the
+starts with a single text area that contains both stdout and stderr, with text from stderr displayed in orange.  Stdin is hidden by default, but can be shown (toggled) with the
 .B "^x i"
 command.  This view mode is called ``splitmode 2''.  ``Splitmode 1'' has a single text area with stdin, stdout and stderr in it, ``splitmode 3'' has a text area for each of stdin, stdout, and stderr (with the possibility to hide stdin).  The mode can be set by the command-line options
 .B -123
@@ -83,7 +83,7 @@ and with commands
 .PP
 Several keyboard shortcuts operate on the ``selected'' text area, e.g. page up and page down.  The non-selected text areas are indicated by a black scroll bar.  The selected text area also contains the ``text selection'':  either the text selected by the mouse, or all text in case of no selection.
 .PP
-Each type of text is shown in a different color (on a black background):  blue for stdin, white for stdout, red for stderr, green for commands, a yellow ``ok'' for successful completion and non-successful exit statuses in orange.  Displaying colors can be disabled at startup by
+Each type of text is shown in a different color (on a black background):  blue for stdin, white for stdout, orange for stderr, green for commands, a yellow ``ok'' for successful completion and non-successful exit statuses in red.  Displaying colors can be disabled at startup by
 .B -C
 or toggled at runtime by
 .BR "^x c" .

@@ -211,7 +211,7 @@ tkbinds()
 }
 
 tags := array[] of {"in", "out", "err", "cmd", "status", "ok"};
-tagcolors := array[] of {"#0000ff", "white", "red", "lime", "orange", "yellow"};
+tagcolors := array[] of {"#0000ff", "white", "orange", "lime", "red", "yellow"};
 tktags(on: int)
 {
 	for(i := 0; i < len textwidgets; i++) {
