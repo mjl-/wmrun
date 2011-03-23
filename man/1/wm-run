@@ -156,6 +156,12 @@ has been pressed and the next character will be part of a
 .B Del
 Kill the current program.
 .TP
+.BI "Page up" " and " "page down"
+Scroll the selected text area up/down a page.
+.TP
+.BI Home " and " end
+Scroll the selected text area to make the start/end of the command become visible.
+.TP
 .BI tab " or " ^i
 Complete the file name at the word under cursor.
 .TP

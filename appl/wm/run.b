@@ -207,6 +207,8 @@ tkbinds()
 {
 	tkcmd(sprint("bind .e.edit <Key-%c> {send edit pgup}", kb->Pgup));
 	tkcmd(sprint("bind .e.edit <Key-%c> {send edit pgdown}", kb->Pgdown));
+	tkcmd(sprint("bind .e.edit <Key-%c> {send edit home}", kb->Home));
+	tkcmd(sprint("bind .e.edit <Key-%c> {send edit end}", kb->End));
 	tkcmd(sprint("bind .e.edit <Key-%c> {send edit esc}", kb->Esc));
 
 	for(l := list of {"in", "outerr", "err"}; l != nil; l = tl l)
@@ -649,6 +651,10 @@ cmd(s: string)
 		tkcmd(sprint(".t.%s.t yview scroll -1 pages", textwidgets[textfocus]));
 	"pgdown" =>
 		tkcmd(sprint(".t.%s.t yview scroll 1 pages", textwidgets[textfocus]));
+	"home" =>
+		tkcmd(sprint(".t.%s.t see cmdstart", textwidgets[textfocus]));
+	"end" =>
+		tkcmd(sprint(".t.%s.t see end", textwidgets[textfocus]));
 	"esc" =>
 		case editmode {
 		Einsert =>
@@ -1057,6 +1063,12 @@ tkadd(t: int, s: string, scroll: int)
 			for(i := 0; i < len textwidgets; i++)
 				tkcmd(sprint(".t.%s.t delete 1.0 end", textwidgets[i]));
 		tkstatus(curcmd.e);
+		for(i = 0; i < len textwidgets; i++) {
+			w := sprint(".t.%s.t", textwidgets[i]);
+			end := tkcmd(sprint("%s index end", w));
+			tkcmd(sprint("%s mark set cmdstart %s", w, end));
+		}
+
 	} else if(t > Tcmd) {
 		if(len s > 20)
 			s = s[:20];

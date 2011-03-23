@@ -43,7 +43,6 @@ mechiel lukkien, reachable at mechiel@ueber.net.
 
 # todo
 
-- shortcut to move to start of command?  or otherwise better scrolling.  or better:  start in don't-scroll mode by default.
 - history for command input (stdin)
 - for tab completion, don't remove text if there is no match
 - for tab completion, allow pgup/pgdown keys to work on completion text area
