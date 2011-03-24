@@ -881,6 +881,7 @@ key(c: int)
 			start(e.s);
 		editmode = Einsert;
 		tkseteditmode();
+		return;
 	}
 
 	if(editmode == Einsert) {
