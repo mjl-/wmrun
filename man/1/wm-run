@@ -6,7 +6,7 @@ wm/run \- run shell commands
 [
 .B -d
 ] [
-.B -123Chi
+.B -123ChiS
 ] [
 .I cmd
 .I ...
@@ -64,6 +64,11 @@ Also see
 Show the input text widget.
 Also see
 .LR "^x i" .
+.TP
+.B -S
+Do not automatically scroll the text view.
+Also see
+.LR "^x s" .
 
 .I Wm/run
 shows an input entry at the bottom of its window, in which the user may enter a new command or input for a running command.
@@ -88,6 +93,7 @@ Above the input entry is a line containing various bits of status information:  
 .I splitmode
 (numeric),
 whether stdin is shown (`i'), whether multiple commands are shown (`h') or only the current, whether text is printed in color (`c'),
+whether the text view is scrolled automatically (`s'),
 whether the command still holds references stdin/stdout/stderr, status and sequence number of the command, and the command itself.
 Above that are one or more text areas displaying the stdin, stdout and stderr.
 .PP
@@ -212,6 +218,12 @@ Toggle color display.
 A
 .L c
 in the status line indicates colors are shown.
+.TP
+.B "^x s"
+Toggle autoscroll.
+An
+.L s
+in the status line indicates if autoscroll is currently on.
 .TP
 .B "^x x"
 Toggle the debug flag.

@@ -64,6 +64,7 @@ editbuf: string;   # buffer for deletions, yank & paste
 showhist := 0;	   # whether to show multiple commands, only for Msingle
 showin := 0;       # whether to show in window (only for Msplit2, Msplit3)
 showcolors := 1;   # whether tags have colors
+autoscroll := 1;   # whether view automatically scrolls with added text
 
 showcomplete := 0; # whether completion frame is currently shown
 textfocus := 1;    # text frame with focus, outerr by default
@@ -163,6 +164,7 @@ tkcmds0 := array[] of {
 "label .s.showin	-width 1w",
 "label .s.showhist	-width 1w",
 "label .s.showcolors	-width 1w",
+"label .s.autoscroll	-width 1w",
 "label .s.pad1		-width 1w",
 "label .s.f0		-fg green -width 1w",
 "label .s.f1		-fg green -width 1w",
@@ -176,8 +178,9 @@ tkcmds0 := array[] of {
 "bind .s.showhist	<ButtonRelease-1> +{send edit cycle showhist}",
 "bind .s.showin		<ButtonRelease-1> +{send edit cycle showin}",
 "bind .s.showcolors	<ButtonRelease-1> +{send edit cycle showcolors}",
+"bind .s.autoscroll	<ButtonRelease-1> +{send edit cycle autoscroll}",
 "bind .s.splitmode	<ButtonRelease-1> +{send edit cycle splitmode}",
-"pack .s.editmode .s.splitmode .s.showin .s.showhist .s.showcolors .s.pad1 .s.f0 .s.f1 .s.f2 .s.pad2 .s.status .s.pad3 .s.gen .s.pad4 .s.cmd -side left",
+"pack .s.editmode .s.splitmode .s.showin .s.showhist .s.showcolors .s.autoscroll .s.pad1 .s.f0 .s.f1 .s.f2 .s.pad2 .s.status .s.pad3 .s.gen .s.pad4 .s.cmd -side left",
 
 "frame .e",
 "label .e.mode		-width 1w -text { }",
@@ -267,7 +270,7 @@ init(ctxt: ref Draw->Context, args: list of string)
 
 	# keep usage in sync with new()
 	arg->init(args);
-	arg->setusage(arg->progname()+" [-d] [-123Chi] [cmd ...]");
+	arg->setusage(arg->progname()+" [-d] [-123ChiS] [cmd ...]");
 	while((c := arg->opt()) != 0)
 		case c {
 		'd' =>	dflag++;
@@ -277,6 +280,7 @@ init(ctxt: ref Draw->Context, args: list of string)
 		'C' =>	showcolors = 0;
 		'h' =>	showhist = 1;
 		'i' =>	showin = 1;
+		'S' =>	autoscroll = 0;
 		* =>	arg->usage();
 		}
 	args = arg->argv();
@@ -335,6 +339,7 @@ init(ctxt: ref Draw->Context, args: list of string)
 	tksetshowin();
 	tksetshowhist();
 	tksetshowcolors();
+	tksetscroll();
 	tktextfocus(textfocus);
 
 	tkclient->onscreen(top, nil);
@@ -706,6 +711,9 @@ cmd(s: string)
 				tksetshowcolors();
 			"splitmode" =>
 				tksplitmodeset((splitmode+1)%3);
+			"autoscroll" =>
+				autoscroll = !autoscroll;
+				tksetscroll();
 			* =>
 				raise "other cycle";
 			}
@@ -738,6 +746,8 @@ new(argv: list of string)
 		argv = "-h"::argv;
 	if(!showcolors)
 		argv = "-C"::argv;
+	if(!autoscroll)
+		argv = "-S"::argv;
 	argv = sprint("-%c", splitmode+'1')::argv;
 	if(dflag)
 		argv = "-d"::argv;
@@ -783,7 +793,11 @@ ctlx(c: int)
 		showcolors = !showcolors;
 		tktags(showcolors);
 		tksetshowcolors();
-	'x' =>	dflag = !dflag;
+	's' =>
+		autoscroll = !autoscroll;
+		tksetscroll();
+	'x' =>
+		dflag = !dflag;
 	'0' =>
 		curcmd = history.first;
 		if(curcmd != nil)
@@ -1075,7 +1089,7 @@ cmdadd(cmd: ref Cmd, t: int, s: string)
 		cmd.busy = 0;
 	cmd.l = ref Rw (t, s)::cmd.l;
 	if(cmd == curcmd.e)
-		tkadd(t, s, 1);
+		tkadd(t, s, autoscroll);
 }
 
 
@@ -1255,6 +1269,7 @@ tksetshowin()		{ tkset(".s.showin", showin, " i"); }
 tkseteditmode()		{ tkset(".s.editmode", editmode, "[ x"); }
 tksetshowcolors()	{ tkset(".s.showcolors", showcolors, " c"); }
 tksetsplitmode()	{ tkset(".s.splitmode", splitmode, "123"); }
+tksetscroll()		{ tkset(".s.autoscroll", autoscroll, " s"); }
 
 tkset(w: string, v: int, opts: string)
 {
