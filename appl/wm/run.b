@@ -728,6 +728,10 @@ cmd(s: string)
 progdone(t: int, s: string)
 {
 	runpid = 0;
+	history.last.e.f = array[3] of ref Sys->FileIO;
+	tklabel(".s.f0", "");
+	tklabel(".s.f1", "");
+	tklabel(".s.f2", "");
 	cmdadd(history.last.e, t, s);
 	history.last.e.wd = workdir();
 	reads = reads.new();
