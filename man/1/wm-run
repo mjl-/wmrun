@@ -157,6 +157,11 @@ is displayed in the status line when
 .LR ^x
 has been pressed and the next character will be part of a
 .LR ^x -command.
+If the cursor focus is in one of the text views,
+.LR ^t
+and
+.LR ^x
+bring it back to the input entry.
 
 .TP
 .B Del

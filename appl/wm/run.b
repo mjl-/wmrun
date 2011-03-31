@@ -139,6 +139,9 @@ tkcmds0 := array[] of {
 "bind .t.in.t		<Control-t> {focus .e.edit}",
 "bind .t.outerr.t	<Control-t> {focus .e.edit}",
 "bind .t.err.t		<Control-t> {focus .e.edit}",
+"bind .t.in.t		<Control-x> {focus .e.edit; send edit x}",
+"bind .t.outerr.t	<Control-x> {focus .e.edit; send edit x}",
+"bind .t.err.t		<Control-x> {focus .e.edit; send edit x}",
 
 "scrollbar .t.in.s	-command {.t.in.t yview}",
 "scrollbar .t.outerr.s	-command {.t.outerr.t yview}",
