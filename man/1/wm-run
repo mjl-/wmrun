@@ -154,7 +154,9 @@ has been pressed and the next character will be part of a
 
 .TP
 .B Del
-Kill the current program.
+Kill the current command.
+Same as
+.LR "^x k" .
 .TP
 .BI "Page up" " and " "page down"
 Scroll the selected text area up/down a page.
@@ -178,58 +180,60 @@ and
 .I previous
 command and its i/o from history.
 .TP
-.BI ^d
+.B ^d
 Send end-of-file to running program.
 When no program is running, quit
 .IR wm/run .
 
 .TP
-.LR "^x p"
+.B "^x p"
 Plumb the text in the input entry, delete it if the plumb message found a destination.
 Handy in combination with file name completion.
 .TP
-.LR "^x n"
+.B "^x n"
 Start a new instance of
 .IR wm/run .
 If the input entry is non-empty, use it as the initial command to start.
 The current mode is passed along by command-line options.
 .TP
-.LR "^x z"
+.B "^x z"
 Clear all command history before the currently visible command.
 .TP
-.LR "^x r"
+.B "^x r"
 Run the current selection by starting
 .L "sh -n"
 and writing the selection to the shells stdin.
 .TP
-.LR "^x \n"
+.B "^x \n"
 Run the program in the input entry with the current selection as sole input.
 .TP
-.LR "^x c"
+.B "^x c"
 Toggle color display.
 A
 .L c
 in the status line indicates colors are shown.
 .TP
-.LR "^x x"
+.B "^x x"
 Toggle the debug flag.
 Not shown in the status label.
 .TP
-.LR "^x 0"
+.B "^x 0"
 Display first command in the history.
 .TP
-.LR "^x $"
+.B "^x $"
 Display last command (current command) in the history.
 .TP
-.LR "^x k"
+.B "^x k"
 Kill the current command.
+Same as
+.LR Del .
 .TP
-.LR "^x [123]"
+.B "^x [123]"
 Activate
 .I splitmode
 to 1, 2 or 3.
 .TP
-.LR "^x [!@#]"
+.B "^x [!@#]"
 Focus text area 1, 2 or 3 (stdin, stdout, stderr).
 Note that
 .LR [!@#]
@@ -237,31 +241,31 @@ are
 .LR shift-[123]
 on most keyboards.
 .TP
-.LR "^x i"
+.B "^x i"
 Toggle visibility of text area with stdin, only for
 .I splitmodes
 2 and 3.
 .TP
-.LR "^x h"
+.B "^x h"
 Toggle displaying multiple commands (`history').
 .TP
-.LR "^x l"
+.B "^x l"
 Redraw the text areas.
 Modifications are lost.
 .TP
-.LR "^x ."
+.B "^x ."
 Run
 .L lc
 to compactly display the contents of this directory.
 .TP
-.LR "^x F"
+.B "^x F"
 Compactly display all files in the file tree by calling
 .IR find (1).
 .TP
-.LR "^x f"
+.B "^x f"
 Compactly display most files in the file tree.
 .TP
-.LR "^x d"
+.B "^x d"
 Compactly display only directories in the file tree.
 
 .SH INPUT
@@ -314,16 +318,16 @@ Delete character under or before cursor.
 .PP
 The remainder are motion commands, they only change the cursor and can act as modifiers for modification commands.
 .TP
-.BR ^
+.B ^
 To first non-blank of line.
 .TP
-.BR 0
+.B 0
 To first character of line.
 .TP
-.BR $
+.B $
 To last cursor position of line.
 .TP
-.BR [wWeEbB]
+.B [wWeEbB]
 Navigate words.
 .LR [wWeE]
 move forward,
@@ -338,17 +342,17 @@ consider a words to be separated by whitespace or punctuation.
 .LR [WEB]
 consider words to be separated only by whitespace.
 .TP
-.BR h
+.B h
 Move one character left.
 .TP
-.BR l
+.B l
 Move one character right.
 .TP
-.BR <repeat>|
+.B "<repeat>|"
 Move to character
 .IR repeat .
 .TP
-.BR %
+.B %
 Jump to matching closing or opening character, one of
 .LR [{(]}) ,
 taking nesting into account.
