@@ -906,10 +906,18 @@ key(c: int)
 	}
 
 	if(editmode == Einsert) {
-		if(c == '\t' && !v) {
+		if(!v)
+		case c {
+		'\t' =>
 			si := (ref *e).rskipcl(Nonwhitespace);
 			ei := (ref *e).skipcl(Nonwhitespace);
 			complete(e.s, si, ei);
+			return;
+		kb->Up =>
+			histprev(e);
+			return;
+		kb->Down =>
+			histnext(e);
 			return;
 		}
 		i := ei := e.i;
@@ -941,6 +949,36 @@ key(c: int)
 		say("key: "+ex);
 		keys = nil;
 	}
+}
+
+histprev(e: ref Str): int
+{
+	if(edithist == nil && history.last == nil || edithist != nil && edithist.prev == nil)
+		return 0;
+	if(edithist == nil) {
+		edithist = history.last;
+		editorig = e.s;
+		editorigpos = e.i;
+	} else
+		edithist = edithist.prev;
+	tkedit(0, len e.s, edithist.e.cmd, 0);
+	return 1;
+}
+
+histnext(e: ref Str): int
+{
+	if(edithist == nil)
+		return 0;
+	if(edithist == history.last) {
+		edithist = nil;
+		tkedit(0, len e.s, editorig, editorigpos);
+		return 0;
+	}
+	if(edithist.next == nil)
+		return 0;
+	edithist = edithist.next;
+	tkedit(0, len e.s, edithist.e.cmd, 0);
+	return 1;
 }
 
 start(x: string)

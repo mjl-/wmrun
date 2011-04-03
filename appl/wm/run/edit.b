@@ -185,34 +185,16 @@ esc(k: ref Str, e: ref Str): int
 		change = 0;
 	'j' =>
 		while(rep1--) {
-			if(edithist == nil)
+			if(!histnext(e))
 				break;
-			if(edithist == history.last) {
-				edithist = nil;
-				tkedit(0, len e.s, editorig, editorigpos);
-				break;
-			} else if(edithist.next == nil)
-				break;
-			else
-				edithist = edithist.next;
-			tkedit(0, len e.s, edithist.e.cmd, 0);
 			if(rep1)
 				e = tkeditstr();
 		}
 		change = 1;
 	'k' =>
 		while(rep1--) {
-			if(edithist == nil && history.last == nil)
+			if(!histprev(e))
 				break;
-			if(edithist == nil) {
-				edithist = history.last;
-				editorig = e.s;
-				editorigpos = e.i;
-			} else if(edithist.prev == nil)
-				break;
-			else
-				edithist = edithist.prev;
-			tkedit(0, len e.s, edithist.e.cmd, 0);
 			if(rep1)
 				e = tkeditstr();
 		}

@@ -172,8 +172,11 @@ Same as
 .BI "Page up" " and " "page down"
 Scroll the selected text area up/down a page.
 .TP
-.BI Home " and " end
+.BI Home " and " End
 Scroll the selected text area to make the start/end of the command become visible.
+.TP
+.BI Up " and " Down
+Navigate command input history to previous and next commands.
 .TP
 .BI tab " or " ^i
 Complete the file name at the word under cursor.
@@ -320,7 +323,7 @@ Repeat previous command (insertions cannot be repeated).
 Undo and redo changes, multiple levels implemented.
 .TP
 .BR j " and " k
-Navigate through input entry history.
+Navigate through command input history.
 Only commands (not input for running commands) are stored in history.
 .TP
 .BR <repeat>G " or " <repeat>gg
