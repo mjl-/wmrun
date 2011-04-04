@@ -365,7 +365,11 @@ init(ctxt: ref Draw->Context, args: list of string)
 		tkclient->wmctl(top, s);
 
 	s := <-editc =>
-		cmd(s);
+		done := cmd(s);
+		if(done) {
+			killgrp(pid());
+			return;
+		}
 		tkup();
 
 	s := <-keyc =>
@@ -625,7 +629,7 @@ plumb(s: string): int
 	return m.send() >= 0;
 }
 
-cmd(s: string)
+cmd(s: string): int
 {
 	case s {
 	"pgup" or
@@ -649,7 +653,7 @@ cmd(s: string)
 		}
 	"eof" =>
 		if(!runpid)
-			quit();
+			return 1;
 		if(curcmd == nil)
 			break;
 		text.append(array of byte "");
@@ -723,6 +727,7 @@ cmd(s: string)
 		} else
 			warn(sprint("other cmd %q", s));
 	}
+	return 0;
 }
 
 progdone(t: int, s: string)
@@ -742,6 +747,9 @@ progdone(t: int, s: string)
 killprog()
 {
 	killgrp(runpid);
+	pids := history.last.e.pids;
+	for(i := 0; i < len pids; i++)
+		kill(pids[i]);
 	progdone(Tstatus, "killed");
 }
 
@@ -1057,7 +1065,7 @@ fwrite(cmd: ref Cmd, f: ref Sys->FileIO, c: chan of (ref Cmd, (int, array of byt
 
 run(cmd: ref Cmd, args: list of ref sh->Listnode, sherr: string, pidc: chan of (int, string))
 {
-	sys->pctl(Sys->NEWPGRP|Sys->NEWFD, nil);
+	sys->pctl(Sys->NEWFD, nil);
 	xsay(sprint("run, %q", cmd.cmd));
 
 	spawn mkfio(rc := chan of (ref F, string));
@@ -1076,6 +1084,7 @@ run(cmd: ref Cmd, args: list of ref sh->Listnode, sherr: string, pidc: chan of (
 	cmd.pids[2] = <-fpidc;
 	cmd.f = array[] of {f.io, f.io, f.e};
 
+	sys->pctl(sys->NEWPGRP, nil);
 	pidc <-= (pid(), nil);
 
 	{
@@ -1449,12 +1458,6 @@ say(s: string)
 {
 	if(dflag)
 		warn(s);
-}
-
-quit()
-{
-	killgrp(pid());
-	exit;
 }
 
 workdir(): string
