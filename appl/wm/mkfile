@@ -3,11 +3,6 @@
 TARG=\
 	run.dis\
 
-MODULES=\
-	run/complete.b\
-	run/edit.b\
-	run/list.b\
-
 SYSMODULES=\
 	arg.m\
 	bufio.m\

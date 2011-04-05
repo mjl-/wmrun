@@ -1,22 +1,21 @@
 # status
 
-works.  may change.
+works, may grow a few features.
 
 
 # intro
 
-wm/run is an alternative to wm/sh.  it accepts commands that it
-executes by sh(1).  wm/run is different from wm/sh in the following
-respects:
+wm/run is an alternative to wm/sh.  wm/run uses the inferno shell
+to execute commands.  wm/run has the following features that wm/sh
+does not have:
 
-- it doesn't pretend i/o of the shell, and programs started by the
-  shell, are part of the same textsoup.  instead, it keeps the i/o
-  (internally) separate and lets you navigate earlier commands and their
-  i/o.
-- Del kills the program currently running
+- input history (both commands and stdin), with up/down navigation
+- Del kills the running program
 - file name completion with tab
-- vi-like command-line editing and history (similar to openbsd's pdksh)
-- different colors for commands, input and output
+- show std in,out,err and exceptions differently
+- vi-like command-line editing
+
+just as wm/sh, wm/run also does chording & plumbing.
 
 
 # install
@@ -43,14 +42,7 @@ mechiel lukkien, reachable at mechiel@ueber.net.
 
 # todo
 
-- insert text that wasn't read by a command as a command?
-- when completing, take common filename-delimiting chars into account?  eg ">/tm<tab>" should try to complete "/tm", not ">/tm".  could also handle sh quoting.
-- put line after successful plumb with "^x p" in history
-- history for command input (stdin)
-- make a var that holds all command i/o, so don't only keep it per command.  needed for redrawing with showhist (when i/o from previously running command comes in).  also clarify in man page that one program can read stdin (the latest), but that the others can still run in the background and write to their stdout & stderr.
-- provide keys for inserting all completion matches?
+- try not to leave gap at the bottom after autoscroll.  poor use of screen.
 - indicate somewhere that partial utf-8 characters are lingering?
-- more/less ^x shortcuts for text in text widgets?
-- keys for resizing the focused text widget?
-- for now, there won't be a way to run multiple programs concurrently.
-- think of something for /dev/cons & /dev/consctl.
+- implement split stdin/stderr again?
+- when plumbing of text, use the directory the command finished in?  need a way to determine the dir.

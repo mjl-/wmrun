@@ -11,13 +11,13 @@ include "bufio.m";
 	Iobuf: import bufio;
 include "string.m";
 	str: String;
+include "keyboard.m";
+	kb: Keyboard;
 include "names.m";
 	names: Names;
 include "plumbmsg.m";
 	plumbmsg: Plumbmsg;
 	Msg: import plumbmsg;
-include "wait.m";
-	wait: Wait;
 include "readdir.m";
 	readdir: Readdir;
 include "sh.m";
@@ -27,262 +27,174 @@ include "tk.m";
 	tk: Tk;
 include "tkclient.m";
 	tkclient: Tkclient;
-include "keyboard.m";
-	kb: Keyboard;
-
-include "run/complete.b";
-include "run/edit.b";
-include "run/list.b";
+include "wait.m";
+	wait: Wait;
 
 WmRun: module {
 	init:	fn(ctxt: ref Draw->Context, argv: list of string);
 };
-Shcmd: type WmRun;
+Cmd: type WmRun;
 
 dflag: int;
+autoscroll := 1;
+markup := 1;
+font: string;
+
+Histsize: con 50000;
+showcomplete: int;
 plumbed: int;
 
-Msingle, Msplit2, Msplit3: con iota;
-splitmode := Msplit2;
-
-# for input entry
-Eesc, Einsert, Ectlx: con iota;
-editmode := Einsert;
-
-edithist: ref Link[ref Cmd];  # initially nil
-editorig: string;  # text for new command before walking history
-editorigpos: int;  # cursor in editorig
-
-keyeditorig: ref Str;		# state before (potential) change
-keyeditprev,			# previous contents, for 'u', most recent on hd
-keyeditnext: list of ref Str;	# next contents, for '^r'
-
-keys: ref Str;     # edit entry's vi command so far
-prevkeys: ref Str; # previous command, for repeat with '.'
-editbuf: string;   # buffer for deletions, yank & paste
-
-showhist := 0;	   # whether to show multiple commands, only for Msingle
-showin := 0;       # whether to show in window (only for Msplit2, Msplit3)
-showcolors := 1;   # whether tags have colors
-autoscroll := 1;   # whether view automatically scrolls with added text
-
-showcomplete := 0; # whether completion frame is currently shown
-textfocus := 1;    # text frame with focus, outerr by default
-
-lastmouse: int;    # last mouse buttons
-lastb1, lastb2, lastb3: string;  # text widget index
-downb1, downb2, downb3: string;  # index of last press
-
-# on command finish, status/exception goes here
-statusc: chan of string;
 exc: chan of string;
+statusc: chan of string;
 
-# threads without normal stderr send here
-warnc: chan of string;
+Einsert, Evi, Ectlx, Eraw: con iota;
+editmode := Einsert;
+ctlv: int;
+rawfids: list of int;
 
-# all commands have file2chan's for fd 0-2 and send them on these channels to alt in init.
-inc: chan of (ref Cmd, (int, int, int, Sys->Rread));
-outc,
-errc: chan of (ref Cmd, (int, array of byte, int, Sys->Rwrite));
-inpending,
-outpending,
-errpending: array of byte;  # partial utf-8 bytes to write to text widget later
+Ctl: con -16r60;	# offset for lower case control
 
-reads: ref List[ref Read];	# reads for stdin
-text: ref List[array of byte];	# data to write to stdin
+Read: adt {
+	n:	int;
+	c:	sys->Rread;
+};
 
-cmdgen: int;  # unique/sequence number for commands
-history: ref List[ref Cmd]; # commands in history.  currently executing is history.last
-curcmd: ref Link[ref Cmd];  # command currently visible
-runpid: int;  # pid of history.last, or 0 when none
+Job: adt {
+	pid:	int;
+	cmd:	string;
+};
+
+Str: adt {
+	s:	string;
+	i:	int;
+	si,
+	ei:	int;  # for motion commands, start and end for motion (ordered)
+
+	more:		fn(x: self ref Str): int;
+	char:		fn(x: self ref Str): int;
+	xget:		fn(x: self ref Str): int;
+	in:		fn(x: self ref Str, cl: string): int;
+	readrep:	fn(x: self ref Str, def: int): (int, string);
+	previn:		fn(x: self ref Str, cl: string): int;
+	skipcl:		fn(x: self ref Str, cl: string): int;
+	rskipcl:	fn(x: self ref Str, cl: string): int;
+	findcl:		fn(x: self ref Str, cl: string): int;
+	rfindcl:	fn(x: self ref Str, cl: string): int;
+	text:		fn(x: self ref Str): string;
+};
+
+Link: adt[T] {
+	prev,
+	next:	cyclic ref Link;
+	e:	T;
+};
+
+List: adt[T] {
+	first,
+	last:	ref Link[T];
+
+	new:	fn(): ref List;
+	add:	fn(l: self ref List, e: T);
+	take:	fn(l: self ref List): T;
+	empty:	fn(l: self ref List): int;
+};
+
+reads: ref List[ref Read];
+input: ref List[array of byte];
+history: ref List[string];	# history.last is unwritten text
+histcur: ref Link[string];	# non-nil while navigating history, elem in history
+job: ref Job;
+
+vikeys: ref Str;	# keys for current command
+viprevkeys: ref Str;	# for repeat
+vibuf: string;		# for yank/deletions & pasting
+viorig: ref Str;	# before vi command, for undo
+viundo,
+viredo: list of ref Str;
+
+focus := ".out";	# focused window, for pgup/pgdown etc commands
+
+Tcmd, Tin, Tout, Terr, Tstatus, Tex, Texit, Tok: con iota;
+tagstrs := array[] of {
+"cmd", "in", "out", "err", "status", "status", "status", "ok",
+};
+
+shctxt: ref Sh->Context;
+drawctxt: ref Draw->Context;
 
 top: ref Tk->Toplevel;
 wmctl: chan of string;
-drawcontext: ref Draw->Context;
-shcontext: ref Sh->Context;
-
-Read: adt {
-	count:	int;
-	rc:	Sys->Rread;
-};
-
-Tin, Tout, Terr, Tcmd, Tstatus, Tex, Texit, Tok: con iota;  # Rw.t, tagstrs
-tagstrs := array[] of {"in", "out", "err", "cmd", "status", "status", "status", "ok"};
-Rw: adt {
-	t:	int;
-	s:	string;
-};
-Cmd: adt {
-	gen:	int;     # unique gen for cmd
-	f:	array of ref Sys->FileIO;  # 0-2
-	pids:	array of int;  # 0-2
-	wd:	string;  # workdir at end of command
-	cmd:	string;  # command, always set
-	busy:	int;	 # whether not yet finished
-	status:	string;  # return status, if no longer busy
-	ex:	string;  # exception raised or thread exit, if no longer busy
-	l:	list of ref Rw;  # hd is most recent, includes cmd,status,ex,ok
-};
-
-textwidgets := array[] of {"in", "outerr", "err"};
 
 tkcmds0 := array[] of {
-"frame .t",
-"frame .t.in",
-"frame .t.outerr",
-"frame .t.err",
+"frame	.t",
+"frame	.t.out",
+"text	.out		-fg white -bg black -selectforeground black -selectbackground white -yscrollcommand {.t.out.sy set}",
+"scrollbar .t.out.sy	-command {.out yview}",
 
-"text .t.in.t		-fg white -bg black -selectforeground black -selectbackground white -yscrollcommand {.t.in.s set}",
-"text .t.outerr.t	-fg white -bg black -selectforeground black -selectbackground white -yscrollcommand {.t.outerr.s set}",
-"text .t.err.t		-fg white -bg black -selectforeground black -selectbackground white -yscrollcommand {.t.err.s set}",
+"pack .t.out.sy		-fill y -side left",
+"pack .out -in .t.out	-fill both -expand 1",
+"pack .t.out		-fill both -expand 1",
 
-"bind .t.in.t		<Control-t> {focus .e.edit}",
-"bind .t.outerr.t	<Control-t> {focus .e.edit}",
-"bind .t.err.t		<Control-t> {focus .e.edit}",
-"bind .t.in.t		<Control-x> {focus .e.edit; send edit x}",
-"bind .t.outerr.t	<Control-x> {focus .e.edit; send edit x}",
-"bind .t.err.t		<Control-x> {focus .e.edit; send edit x}",
-
-"scrollbar .t.in.s	-command {.t.in.t yview}",
-"scrollbar .t.outerr.s	-command {.t.outerr.t yview}",
-"scrollbar .t.err.s	-command {.t.err.t yview}",
-
-"pack .t.in.s		-fill y -side left",
-"pack .t.outerr.s	-fill y -side left",
-"pack .t.err.s		-fill y -side left",
-
-"pack .t.in.t		-fill both -expand 1 -side right",
-"pack .t.outerr.t	-fill both -expand 1 -side right",
-"pack .t.err.t		-fill both -expand 1 -side right",
+"bind .out	<Control-t> {focus .e.input}",
 
 "frame .c",
-"text .c.complete	-yscrollcommand {.c.s set}",
+"text .c.complete	-yscrollcommand {.c.s set} -fg black -bg white",
 "scrollbar .c.s		-command {.c.complete yview}",
 "pack .c.s		-fill y -side left",
 "pack .c.complete	-fill both -expand 1 -side right",
 
-"frame .s",
-"label .s.editmode	-width 1w",
-"label .s.splitmode	-width 1w",
-"label .s.showin	-width 1w",
-"label .s.showhist	-width 1w",
-"label .s.showcolors	-width 1w",
-"label .s.autoscroll	-width 1w",
-"label .s.pad1		-width 1w",
-"label .s.f0		-fg green -width 1w",
-"label .s.f1		-fg green -width 1w",
-"label .s.f2		-fg green -width 1w",
-"label .s.pad2		-width 1w",
-"label .s.status	-width 20w",
-"label .s.pad3		-width 1w",
-"label .s.gen		-width 5w",
-"label .s.pad4		-width 1w -text {: }",
-"label .s.cmd",
-"bind .s.showhist	<ButtonRelease-1> +{send edit cycle showhist}",
-"bind .s.showin		<ButtonRelease-1> +{send edit cycle showin}",
-"bind .s.showcolors	<ButtonRelease-1> +{send edit cycle showcolors}",
-"bind .s.autoscroll	<ButtonRelease-1> +{send edit cycle autoscroll}",
-"bind .s.splitmode	<ButtonRelease-1> +{send edit cycle splitmode}",
-"pack .s.editmode .s.splitmode .s.showin .s.showhist .s.showcolors .s.autoscroll .s.pad1 .s.f0 .s.f1 .s.f2 .s.pad2 .s.status .s.pad3 .s.gen .s.pad4 .s.cmd -side left",
+"frame	.e",
+"label	.e.io -text { } -width 1w",
+"entry	.e.input",
 
-"frame .e",
-"label .e.mode		-width 1w -text { }",
-"entry .e.edit",
-"bind .e.edit	<Key-\u007f> {send edit del}",
-"bind .e.edit	<Control-n> {send edit next}",
-"bind .e.edit	<Control-p> {send edit prev}",
-"bind .e.edit	<Control-x> {send edit x}",
-"bind .e.edit	<Control-d> {send edit eof}",
-"bind .e.edit	<Control-r> {send key %K}",
-"bind .e.edit	<Control-v> {send key %K}",
-"bind .e.edit	<Key> {send key %K}",
-"pack .e.mode		-side left",
-"pack .e.edit		-fill x -expand 1 -side right",
+"pack .e.io		-side left",
+"pack .e.input		-fill x",
 
-"pack .t.outerr		-fill both -expand 1",
-"pack .t		-fill both -expand 1",
-"pack .s		-fill x",
-"pack .e		-fill x",
+"pack .t	-fill both -expand 1",
+"pack .e	-fill x",
 
-"focus .e.edit",
+"menu	.m",
+".m add command -label noscroll -command {send cmd scroll}",
+".m add command -label nomarkup -command {send cmd markup}",
+".m add command -label send -command {send cmd send}",
+
+"focus .e.input",
 "pack propagate . 0",
-". configure -width 100w -height 35h",
+". configure -width 80w -height 24h",
 };
-
-# additional binds, needing keyboard.m
-tkbinds()
-{
-	tkcmd(sprint("bind .e.edit <Key-%c> {send edit pgup}", kb->Pgup));
-	tkcmd(sprint("bind .e.edit <Key-%c> {send edit pgdown}", kb->Pgdown));
-	tkcmd(sprint("bind .e.edit <Key-%c> {send edit home}", kb->Home));
-	tkcmd(sprint("bind .e.edit <Key-%c> {send edit end}", kb->End));
-	tkcmd(sprint("bind .e.edit <Key-%c> {send edit esc}", kb->Esc));
-
-	for(l := list of {"in", "outerr", "err"}; l != nil; l = tl l)
-		for(b := list of {1, 2, 3}; b != nil; b = tl b) {
-			tkcmd(sprint("bind .t.%s.t <ButtonPress-%d> +{send mouse %%s %%W @%%x,%%y}", hd l, hd b));
-			tkcmd(sprint("bind .t.%s.t <ButtonRelease-%d> +{send mouse %%s %%W @%%x,%%y}", hd l, hd b));
-		}
-
-	for(b = list of {1, 2, 3}; b != nil; b = tl b) {
-		tkcmd(sprint("bind .e.edit <ButtonPress-%d> +{send emouse %%s @%%x,%%y}", hd b));
-		tkcmd(sprint("bind .e.edit <ButtonRelease-%d> +{send emouse %%s @%%x,%%y}", hd b));
-	}
-}
-
-tags := array[] of {"in", "out", "err", "cmd", "status", "ok"};
-tagcolors := array[] of {"#0000ff", "white", "orange", "lime", "red", "yellow"};
-tktags(on: int)
-{
-	for(i := 0; i < len textwidgets; i++) {
-		w := sprint(".t.%s.t", textwidgets[i]);
-		for(j := 0; j < len tags; j++) {
-			c := "white";
-			if(on)
-				c = tagcolors[j];
-			tkcmd(sprint("%s tag configure %s -fg %s -bg black", w, tags[j], c));
-		}
-		tkcmd(sprint("%s tag raise sel", w));
-	}
-}
 
 init(ctxt: ref Draw->Context, args: list of string)
 {
 	sys = load Sys Sys->PATH;
 	if(ctxt == nil)
 		fail("no window context");
-	drawcontext = ctxt;
+	drawctxt = ctxt;
 	draw = load Draw Draw->PATH;
 	arg := load Arg Arg->PATH;
 	bufio = load Bufio Bufio->PATH;
-	str = load String String->PATH;
 	names = load Names Names->PATH;
 	plumbmsg = load Plumbmsg Plumbmsg->PATH;
-	wait = load Wait Wait->PATH;
-	wait->init();
 	readdir = load Readdir Readdir->PATH;
+	str = load String String->PATH;
 	sh = load Sh Sh->PATH;
 	sh->initialise();
-	shcontext = Context.new(ctxt);
+	shctxt = Context.new(ctxt);
 	tk = load Tk Tk->PATH;
 	tkclient = load Tkclient Tkclient->PATH;
+	wait = load Wait Wait->PATH;
+	wait->init();
 
-	sys->pctl(Sys->NEWPGRP|Sys->FORKENV|Sys->FORKNS|Sys->FORKFD, nil);
+	sys->pctl(Sys->NEWPGRP|Sys->FORKNS, nil);
 
 	plumbed = plumbmsg->init(1, nil, 512) >= 0;
 
-	# keep usage in sync with new()
 	arg->init(args);
-	arg->setusage(arg->progname()+" [-d] [-123ChiS] [cmd ...]");
+	arg->setusage(arg->progname()+" [-dMS] [-f font] [cmd ...]");
 	while((c := arg->opt()) != 0)
 		case c {
 		'd' =>	dflag++;
-		'1' =>	splitmode = Msingle; textfocus = 0;
-		'2' =>	splitmode = Msplit2;
-		'3' =>	splitmode = Msplit3;
-		'C' =>	showcolors = 0;
-		'h' =>	showhist = 1;
-		'i' =>	showin = 1;
+		'f' =>	font = arg->earg();
+		'M' =>	markup = 0;
 		'S' =>	autoscroll = 0;
 		* =>	arg->usage();
 		}
@@ -291,68 +203,77 @@ init(ctxt: ref Draw->Context, args: list of string)
 	tkclient->init();
 	(top, wmctl) = tkclient->toplevel(ctxt, "", "run "+workdir(), Tkclient->Appl);
 
-	history = history.new();
-	reads = reads.new();
-	text = text.new();
-	keyeditorig = ref Str ("", 0, 0, 0);
+	cmdc := chan of string;
+	keyc := chan of string;
+	tptrc := chan of string;
+	eptrc := chan of string;
+	tk->namechan(top, cmdc, "cmd");
+	tk->namechan(top, keyc, "key");
+	tk->namechan(top, tptrc, "tptr");
+	tk->namechan(top, eptrc, "eptr");
+	for(i := 0; i < len tkcmds0; i++)
+		tkcmd(tkcmds0[i]);
+	tktags(markup);
+	if(font != nil) {
+		for(l := list of {".out", ".e.input", ".e.io"}; l != nil; l = tl l)
+			tkcmd(hd l+" configure -font "+font);
+	}
+	tkscrollset(autoscroll);
+	tkmarkupset(markup);
 
-	if(sys->bind("#s", "/chan", Sys->MBEFORE) < 0)
-		fail(sprint("bind: %r"));
-	nopermfile := "wmrun.noperm."+string pid();
-	nopermfio := sys->file2chan("/chan", nopermfile);
-	if(nopermfio == nil)
+	keys := list of {kb->Home, kb->End, kb->Del, 16r7f};
+	tkcmd("bind .e.input <Key> {send key %K}");
+	ctls := list of {'d', 'x', 'v'};
+	for(l := keys; l != nil; l = tl l)
+		tkcmd(sprint("bind .e.input <Key-%c> {send key %%K}", hd l));
+	for(l = ctls; l != nil; l = tl l)
+		tkcmd(sprint("bind .e.input {<Control-%c>} {send key %%K}", hd l));
+
+	for(b := list of {1, 2, 3}; b != nil; b = tl b) {
+		tkcmd(sprint("bind .out <ButtonPress-%d> +{send tptr %%s %%W @%%x,%%y %%X %%Y}", hd b));
+		tkcmd(sprint("bind .out <ButtonRelease-%d> +{send tptr %%s %%W @%%x,%%y %%X %%Y}", hd b));
+
+		tkcmd(sprint("bind .e.input <ButtonPress-%d> +{send eptr %%s @%%x,%%y}", hd b));
+		tkcmd(sprint("bind .e.input <ButtonRelease-%d> +{send eptr %%s @%%x,%%y}", hd b));
+	}
+
+	tkclient->onscreen(top, nil);
+	tkclient->startinput(top, "kbd"::"ptr"::nil);
+
+	if(sys->bind("#s", "/chan", sys->MBEFORE) < 0
+	|| sys->bind("#s", "/dev", sys->MBEFORE) < 0)
+		fail(sprint("bind #s: %r"));
+
+	cons := sys->file2chan("/chan", "cons");
+	consctl := sys->file2chan("/chan", "consctl");
+	conserr := sys->file2chan("/dev", "conserr");
+	if(cons == nil || consctl == nil || conserr == nil)
 		fail(sprint("file2chan: %r"));
-	nopermfile = "/chan/"+nopermfile;
-	d := sys->nulldir;
-	d.mode = 0;
-	if(sys->wstat(nopermfile, d) < 0)
-		fail(sprint("wstat %q: %r", nopermfile));
-	if(sys->bind(nopermfile, "/dev/cons", Sys->MREPL) < 0
-		|| sys->bind(nopermfile, "/dev/consctl", Sys->MREPL) < 0)
-		fail(sprint("bind cons,consctl: %r"));
 
-	statusc = chan of string;
-	exc = chan of string;
-	inc = chan of (ref Cmd, (int, int, int, Sys->Rread));
-	outc = chan of (ref Cmd, (int, array of byte, int, Sys->Rwrite));
-	errc = chan of (ref Cmd, (int, array of byte, int, Sys->Rwrite));
+	if(sys->bind("/chan/cons", "/dev/cons", sys->MREPL) < 0
+	|| sys->bind("/chan/consctl", "/dev/consctl", sys->MREPL) < 0)
+		fail(sprint("bind cons & consctl: %r"));
 
-	warnc = chan of string;
-	spawn warner();
-
-	waitfd := sys->open(sprint("/prog/%d/wait", pid()), Sys->OREAD);
+	waitfd := sys->open(sprint("/prog/%d/wait", pid()), sys->OREAD);
 	if(waitfd == nil)
 		fail(sprint("open: %r"));
 	(nil, waitc) := wait->monitor(waitfd);
 	waitfd = nil;
 
-	editc := chan of string;
-	keyc := chan of string;
-	mousec := chan of string;
-	emousec := chan of string;
-	tk->namechan(top, editc, "edit");
-	tk->namechan(top, keyc, "key");
-	tk->namechan(top, mousec, "mouse");
-	tk->namechan(top, emousec, "emouse");
-	tkcmds(tkcmds0);
-	tkbinds();
-	tktags(showcolors);
-	tkseteditmode();
-	tksplitmodeset(splitmode);
-	tksetshowin();
-	tksetshowhist();
-	tksetshowcolors();
-	tksetscroll();
-	tktextfocus(textfocus);
+	exc = chan of string;
+	statusc = chan of string;
 
-	tkclient->onscreen(top, nil);
-	tkclient->startinput(top, "kbd"::"ptr"::nil);
-	if(args == nil)
-		start(sprint("{echo ..; ls} | mc -c %d", tktextwidth()));
-	else
-		start(str->quoted(args));
+	reads = reads.new();
+	input = input.new();
+	history = history.new();
+	history.add("");
+	histcur = history.last;
 
-	for(;;) alt {
+	if(args != nil)
+		runinit(args);
+
+	for(;;)
+	alt {
 	s := <-top.ctxt.kbd =>
 		tk->keyboard(top, s);
 
@@ -364,78 +285,873 @@ init(ctxt: ref Draw->Context, args: list of string)
 	s = <-wmctl =>
 		tkclient->wmctl(top, s);
 
-	s := <-editc =>
-		done := cmd(s);
-		if(done) {
-			killgrp(pid());
-			return;
-		}
+	s := <-tptrc =>
+		tptr(s);
+		tkup();
+
+	s := <-eptrc =>
+		eptr(s);
 		tkup();
 
 	s := <-keyc =>
-		key(str->toint(s, 16).t0);
+		(cc, nil) := str->toint(s, 16);
+		key(cc);
 		tkup();
 
-	s := <-mousec =>
-		mouse(s);
+	s := <-cmdc =>
+		cmd(s);
 		tkup();
 
-	s := <-emousec =>
-		emouse(s);
+	s := <-exc =>
+		finished(Tex, s);
 		tkup();
 
 	s := <-statusc =>
 		if(s == nil)
-			progdone(Tok, s);
+			finished(Tok, s);
 		else
-			progdone(Tstatus, s);
+			finished(Tstatus, s);
 		tkup();
 
-	s := <-exc =>
-		progdone(Tex, s);
+	(pid, mod, err) := <-waitc =>
+		if(dflag) warn(sprint("wait: %d, %s, %s", pid, mod, err));
+		if(pid <= 0) {
+			warn("waiter quit: "+err);
+			continue;
+		}
+		if(job != nil && job.pid == pid) {
+			if(err == nil)
+				finished(Tok, "");
+			else
+				finished(Texit, mod+": "+err);
+			tkup();
+		}
+
+	(nil, n, nil, rc) := <-cons.read =>
+		# stdin
+		if(rc == nil)
+			continue;
+		reads.add(ref Read(n, rc));
+		io();
 		tkup();
 
-	(pid, nil, status) := <-waitc =>
-		if(runpid == pid) {
-			if(status == nil)
-				status = "exit";
-			progdone(Texit, status);
-			tkup();
-		}
+	(nil, buf, nil, rc) := <-cons.write =>
+		# stdout
+		if(rc == nil)
+			continue;
+		textio(Tout, buf);
+		tkup();
+		rc <-= (len buf, nil);
 
-	(cmd, (nil, count, nil, rc)) := <-inc =>
-		if(rc == nil) {
-			cmdclearfd(cmd, 0);
-		} else if(cmd != history.last.e) {
-			rc <-= (array[0] of byte, nil);
-		} else {
-			reads.append(ref Read (count, rc));
-			respondreads(cmd);
-			tkup();
-		}
+	(nil, buf, nil, rc) := <-conserr.write =>
+		# stderr
+		if(rc == nil)
+			continue;
+		textio(Terr, buf);
+		tkup();
+		rc <-= (len buf, nil);
 
-	(cmd, (nil, data, nil, wc)) := <-outc =>
-		if(wc == nil) {
-			cmdclearfd(cmd, 1);
-		} else {
-			s: string;
-			(s, outpending) = utf(outpending, data);
-			cmdadd(cmd, Tout, s);
-			wc <-= (len data, nil);
-			tkup();
+	(nil, buf, fid, rc) := <-consctl.write =>
+		# consctl
+		if(rc == nil)
+			rawfids = del(rawfids, fid);
+		else
+			case string buf {
+			"rawon" =>
+				rawfids = fid::del(rawfids, fid);
+			"rawoff" =>
+				rawfids = del(rawfids, fid);
+			* =>
+				rc <-= (-1, "bad ctl");
+				continue;
+			}
+		if(editmode == Eraw && rawfids == nil)
+			tksetedit(Einsert);
+		if(editmode != Eraw && rawfids != nil) {
+			tksetedit(Eraw);
+			input = input.new();
 		}
+		if(rc != nil)
+			rc <-= (len buf, nil);
 
-	(cmd, (nil, data, nil, wc)) := <-errc =>
-		if(wc == nil) {
-			cmdclearfd(cmd, 2);
-		} else {
-			s: string;
-			(s, errpending) = utf(errpending, data);
-			cmdadd(cmd, Terr, string data);
-			wc <-= (len data, nil);
-			tkup();
-		}
+	(nil, nil, nil, rc) := <-consctl.read or
+	(nil, nil, nil, rc) = <-conserr.read =>
+		if(rc != nil)
+			rc <-= (nil, "permission denied");
 	}
+}
+
+lastb: int;
+bspecial: int;
+tptr(m: string)
+{
+	(nil, l) := sys->tokenize(m, " ");
+	b := int hd l;
+	w := hd tl l;
+	coord := hd tl tl l;
+
+	l = tl tl tl l;
+	x := hd l;
+	y := hd tl l;
+	pos := tkcmd(sprint("%s index %s", w, coord));
+if(dflag) warn(sprint("lastb %x, b %d, widget %s, coord %s, pos %s", lastb, b, w, coord, pos));
+	if(str->prefix("!", pos))
+		return;
+
+	b1, b2, b3: con 1<<iota;
+	isb1 := b&b1;
+	isb2 := b&b2;
+	isb3 := b&b3;
+	wasb1 := lastb&b1;
+	wasb2 := lastb&b2;
+	wasb3 := lastb&b3;
+
+	if(isb1 && isb2 && !wasb2 && ~bspecial&b2) {
+		s := tktextsel(w);
+		if(s != nil) {
+			tkclient->snarfput(s);
+			tkcmd(sprint("%s delete sel.first sel.last", w));
+		}
+		bspecial |= b2;
+	}
+	else if(isb1 && isb3 && !wasb3 && ~bspecial&b3) {
+		s := tktextsel(w);
+		if(s != nil)
+			tkcmd(sprint("%s delete sel.first sel.last", w));
+		t := tkclient->snarfget();
+		tkcmd(sprint("%s insert insert '%s", w, t));
+		tkcmd(sprint("%s tag add sel {insert -%dc} insert", w, len t));
+		bspecial |= b3;
+	}
+	else if(!isb1 && !wasb2 && isb2) {
+		tkcmd(sprint(".m post %d %d", int x-10, int y-5));
+	}
+	else if(wasb3 && !isb3 && !(isb1|isb2|wasb1|wasb2)) {
+		path := tktextsel(w);
+		if(path == nil) {
+			t := tkcmd(w+sprint(" get {%s linestart} {%s lineend}", pos, pos));
+			o := int str->splitstrr(pos, ".").t1;
+			Break: con " \t\n{}()<>";
+			for(si := o; si > 0 && !str->in(t[si-1], Break); si--)
+				{}
+			for(ei := o; ei < len t && !str->in(t[ei], Break); ei++)
+				{}
+			path = t[si:ei];
+		}
+		plumbpath(path);
+	}
+	else if(isb3 && !(isb1|isb2|wasb1|wasb2)) {
+		if(!wasb3) {
+			r := tkcmd(w+" tag ranges sel");
+			if(r != nil)
+				tkcmd(w+" tag remove sel "+r);
+			tkcmd(sprint("%s mark set insert %s", w, pos));
+		} else
+			tkcmd(sprint("%s tkTextSelectTo %s %s", w, x, y));  # evil, using internal libtk function
+	}
+
+	if(b == 0)
+		bspecial = 0;
+
+	lastb = b;
+}
+
+eprevb: int;
+especial: int;
+eptr(m: string)
+{
+	l := sys->tokenize(m, " ").t1;
+	b := int hd l;
+	coord := hd tl l;
+	pos := tkcmd(".e.input index "+coord);
+	if(dflag) (sprint("eptr, b %d, coord %s, pos %s", b, coord, pos));
+	if(str->prefix("!", pos))
+		return;
+
+	b1, b2, b3: con 1<<iota;
+	isb1 := b&b1;
+	isb2 := b&b2;
+	isb3 := b&b3;
+
+	if(isb1 && isb2 && (~eprevb&b2) && (~especial&b2)) {
+		viorig = recordundo();
+		tksetedit(Einsert);
+
+		t: string;
+		if(tkcmd(".e.input selection present") == "1") {
+			t = tkcmd(".e.input get");
+			s := tkcmd(".e.input index sel.first");
+			e := tkcmd(".e.input index sel.last");
+			t = t[int s:int e];
+			tkcmd(".e.input delete sel.first sel.last");
+		}
+		tkclient->snarfput(t);
+		especial |= b2;
+	}
+	else if(isb1 && isb3 && (~eprevb&b3) && (~especial&b3)) {
+		viorig = recordundo();
+		tksetedit(Einsert);
+
+		t := tkclient->snarfget();
+		if(tkcmd(".e.input selection present") != "1")
+			s := e := int tkcmd(".e.input index insert");
+		else {
+			s = int tkcmd(".e.input index sel.first");
+			e = int tkcmd(".e.input index sel.last");
+			if(s > e)
+				(s, e) = (e, s);
+			tkcmd(sprint(".e.input delete %d %d", s, e));
+		}
+		tkcmd(sprint(".e.input insert %d '%s", s, t));
+		tkcmd(sprint(".e.input selection range %d {%d +%dc}", s, s, len t));
+		tkcmd(sprint(".e.input icursor %d", s));
+		especial |= b3;
+	}
+	else if(!especial && !isb1 && (eprevb&b1))
+		tkcmd(sprint(".e.input icursor %s", pos));
+
+	eprevb = b;
+	if(b == 0)
+		especial = 0;
+}
+
+key(c: int)
+{
+	if(!ctlv) {
+		done := 1;
+		case c {
+		kb->Pgup =>
+			tkcmd(focus+" yview scroll -1 pages");
+		kb->Pgdown =>
+			tkcmd(focus+" yview scroll  1 pages");
+		kb->Home =>
+			tkcmd(focus+" see 1.0");
+		kb->End =>
+			tkcmd(focus+" see end");
+		Ctl+'v' =>
+			ctlv = 1;
+		16r7f or
+		kb->Del =>
+			tkcomplete(0);
+			if(job != nil) {
+				killgrp(job.pid);
+				input = input.new();
+				job = nil;
+				io();
+			}
+		Ctl+'d' =>
+			tkcomplete(0);
+			if(job == nil) {
+				killgrp(pid());
+				raise "fail:eof";
+			}
+			input.add(array[0] of byte);
+			io();
+		* =>
+			done = 0;
+		}
+		if(done)
+			return;
+	}
+	case editmode {
+	Einsert =>	keyins(c);
+	Evi =>		keyvi(c);
+	Ectlx =>	keyctlx(c);
+	Eraw =>		keyraw(c);
+	}
+	ctlv = 0;
+}
+
+keyraw(c: int)
+{
+	input.add(sys->aprint("%c", c));
+	io();
+}
+
+keyins(c: int)
+{
+if(dflag) warn(sprint("keyins %c/%#x", c, c));
+
+	if(ctlv)
+		return tkinsert(c);
+
+	if(showcomplete)
+		case c {
+		kb->Esc =>
+			tkcomplete(0);
+			return;
+		'\n' or
+		Ctl+'x' or
+		kb->Up or
+		kb->Down =>
+			tkcomplete(0);
+		}
+
+	case c {
+	kb->Esc =>
+		if(showcomplete)
+			return tkcomplete(0);
+		vikeys = nil;
+		tksetedit(Evi);
+	'\n' =>
+		s := tkcmd(".e.input get");
+		tkcmd(".e.input delete 0 end");
+		histput(s);
+		input.add(array of byte (s+"\n"));
+		io();
+	'\t' =>
+		e := tkget();
+		Break: con " \t\n{}()<>";
+		while(e.si > 0 && !str->in(e.s[e.si-1], Break))
+			e.si--;
+		while(e.ei < len e.s && !str->in(e.s[e.ei], Break))
+			e.ei++;
+		complete(e.s, e.si, e.ei);
+	Ctl+'x' =>
+		tksetedit(Ectlx);
+	kb->Up =>
+		histprev();
+	kb->Down =>
+		histnext();
+	* =>
+		tkinsert(c);
+	}
+}
+
+R: adt {
+	change:		int;
+	isrepeat:	int;
+};
+
+keyvi(c: int)
+{
+if(dflag) warn(sprint("keyvi %c/%#x", c, c));
+
+	if(vikeys == nil)
+		vikeys = ref Str;
+	vikeys.s[len vikeys.s] = c;
+	vikeys.i = 0;
+	viorig = tkget();
+
+	{
+		r := ref R(1, 0);
+		keyvi0(vikeys, ref *viorig, r);
+		if(!r.isrepeat)
+			viprevkeys = vikeys;
+		if(r.change)
+			recordundo();
+		vikeys = nil;
+	} exception ex {
+	"more:*" =>
+		{}
+	"bad:*" =>
+if(dflag) warn("bad: "+ex);
+		vikeys = nil;
+	}
+}
+
+keyvi0(k: ref Str, e: ref Str, r: ref R)
+{
+	k.i = 0;
+if(dflag) warn(sprint("keyvi0, k %s, e %s", k.text(), e.text()));
+	(rep1, rep1str) := k.readrep(1);
+	case x := k.xget() {
+	#R
+	#~
+	# '/' '?' 'n' 'N'
+	'\n' =>
+		s := tkcmd(".e.input get");
+		tkcmd(".e.input delete 0 end");
+		histput(s);
+		input.add(array of byte (s+"\n"));
+		io();
+	'i' or
+	'I' or
+	'a' or
+	'A' or
+	's' or
+	'S' or
+	'C' =>
+		# repeat for insertions is not supported
+		tksetedit(Einsert);
+		case x {
+		'I' =>	move("^", e);
+		'a' =>	move("l", e);
+		'A' =>	move("$", e);
+		's' =>	vibuf = tkedit(e.i, e.i+rep1, "", e.i);
+		'S' =>	vibuf = tkedit(0, len e.s, "", 0);
+		'C' =>	vibuf = tkedit(e.i, len e.s, "", e.i);
+		}
+		r.change = x=='s'||x=='S'||x=='C';
+	'c' =>
+		if(motion(k, e, rep1, 'c'))
+			vibuf = tkedit(e.si, e.ei, "", e.si);
+		else {
+			move("^", e);
+			vibuf = tkedit(e.i, len e.s, "", e.i);
+		}
+		tksetedit(Einsert);
+	'r' =>
+		y := k.xget();
+		n := min(rep1, len e.s-e.i);
+		s: string;
+		for(i := 0; i < n; i++)
+			s[len s] = y;
+		vibuf = tkedit(e.i, e.i+n, s, e.i+n);
+	'y' =>
+		if(motion(k, e, rep1, 'y'))
+			vibuf = e.s[e.si:e.ei];
+		else
+			vibuf = e.s;
+	'Y' =>
+		vibuf = e.s[e.i:];
+	'p' =>
+		while(rep1--) {
+			tkedit(e.i, e.i, vibuf, e.i);
+			e = tkget();
+		}
+	'P' =>
+		while(rep1--) {
+			tkedit(e.i, e.i, vibuf, e.i+len vibuf);
+			e = tkget();
+		}
+	'.' =>
+		# for simpler implementation, only commands can be repeated, not insertions
+		if(viprevkeys != nil)
+			while(rep1--) {
+				keyvi0(viprevkeys, e, r);
+				e = tkget();
+			}
+		r.isrepeat = 1;
+	'u' =>
+		while(rep1-- && viundo != nil) {
+			viredo = e::viredo;
+			ee := hd viundo;
+			viundo = tl viundo;
+			tkedit(0, len e.s, ee.s, ee.i);
+			e = ee;
+		}
+		r.change = 0;
+	'r'-16r60 => # ^r
+		while(rep1-- && viredo != nil) {
+			viundo = e::viundo;
+			ee := hd viredo;
+			viredo = tl viredo;
+			tkedit(0, len e.s, ee.s, ee.i);
+			e = ee;
+		}
+		r.change = 0;
+	'j' =>
+		while(rep1-- && histnext())
+			{}
+	'k' =>
+		while(rep1-- && histprev())
+			{}
+	'g' or
+	'G' =>
+		if(x == 'g')
+			case k.xget() {
+			'g' =>	{} # handled below
+			* =>	raise "bad:bad 'g'";
+			}
+
+		n: ref Link[string];
+		if(rep1str == nil) {
+			if(x == 'g')
+				n = history.first;
+			else
+				n = history.last;
+		} else {
+			for(l := history.first; l != nil && rep1-- > 0; l = l.next)
+				{}
+			n = l;
+		}
+		if(n != nil) {
+			histcur = n;
+			tkedit(0, len e.s, n.e, 0);
+		}
+		r.change = 0;
+	'D' =>
+		vibuf = tkedit(e.i, len e.s, "", e.i);
+	'd' =>
+		if(motion(k, e, rep1, 'd'))
+			vibuf = tkedit(e.si, e.ei, "", e.si);
+		else
+			vibuf = tkedit(0, len e.s, "", 0);
+	'x' =>
+		vibuf = tkedit(e.i, min(len e.s, e.i+rep1), "", e.i);
+	'X' =>
+		i := max(0, e.i-rep1);
+		vibuf = tkedit(i, e.i, "", i);
+	* =>
+		k.i = 0;
+		motion(k, e, 1, 0);
+		tkedit(0, 0, "", e.i);
+		r.change = 0;
+	}
+	if(k.more())
+		raise "remaining chars in keys";
+}
+
+Nonword: con "\u0001-\u0008\u000b-\u001f!-/:-@[-`{-\u007f";  # without whitespace
+Word: con "^\u0001-/:-@[-`{-\u007f";  # without whitespace
+Whitespace: con " \t\n";
+Nonwhitespace := "^"+Whitespace;
+
+movexword(e: ref Str)
+{
+	if(e.in(Word))
+		e.skipcl(Word);
+	else if(e.in(Nonword))
+		e.skipcl(Nonword);
+}
+
+rmovexword(e: ref Str)
+{
+	if(e.in(Word))
+		e.rskipcl(Word);
+	else
+		e.rskipcl(Nonword);
+}
+
+move(s: string, e: ref Str)
+{
+	k := ref Str (s, 0, 0, 0);
+	motion(k, e, 1, 0);
+	tkedit(0, 0, "", e.i);
+}
+
+motion(k: ref Str, e: ref Str, rep1, cmdchar: int): int
+{
+if(dflag) warn (sprint("motion, k %s, e %s, rep1 %d", k.text(), e.text(), rep1));
+	(rep2, nil) := k.readrep(1);
+	rep := rep1*rep2;
+
+	case x := k.xget() {
+	'^' =>	e.i = 0; e.findcl(Nonwhitespace);
+	'0' =>	e.i = 0;
+	'$' =>	e.i = len e.s;
+	'w' =>
+		while(rep--) {
+			movexword(e);
+			e.skipcl(Whitespace);
+		}
+	'W' =>
+		while(rep--) {
+			e.skipcl(Nonwhitespace);
+			e.skipcl(Whitespace);
+		}
+	'e' =>
+		while(rep--) {
+			e.skipcl(Whitespace);
+			movexword(e);
+		}
+	'E' =>
+		while(rep--) {
+			e.skipcl(Whitespace);
+			e.skipcl(Nonwhitespace);
+		}
+	'b' =>
+		while(rep--) {
+			e.rskipcl(Whitespace);
+			if(e.i > 0)
+				e.i--;
+			rmovexword(e);
+		}
+	'B' =>
+		while(rep--) {
+			e.rskipcl(Whitespace);
+			e.rskipcl(Nonwhitespace);
+		}
+	'h' =>	e.i = max(0, e.i-rep);
+	' ' or
+	'l'=>	e.i = min(len e.s, e.i+rep);
+	'|' =>	e.i = max(len e.s, rep);
+	'%' =>
+		pat: con "[{(]})";
+		orig := e.i;
+		if(!e.findcl(pat) && !e.rfindcl(pat)) {
+			e.i = orig;
+			warn("char not found");
+			break;
+		}
+		c := e.char();
+		for(i := 0; i < len pat && pat[i] != c; i++)
+			{}
+		oc := pat[(i+3)%6];
+		delta := 1;
+		if(i > 2)
+			delta = -1;
+		e.i += delta;
+		n := 1;
+		while(e.i >= 0 && e.i < len e.s) {
+			y := e.char();
+			if(y < 0)
+				break;
+			else if(y == c)
+				n++;
+			else if(y == oc)
+				n--;
+			if(n == 0)
+				break;
+			e.i += delta;
+		}
+		if(n != 0)
+			e.i = orig;
+	* =>
+		if(cmdchar == x)
+			return 0;
+		raise "bad:not a motion command";
+	}
+	e.ei = e.i;
+	if(e.si > e.ei)
+		(e.si, e.ei) = (e.ei, e.si);
+	return 1;
+}
+
+keyctlx(c: int)
+{
+if(dflag) warn(sprint("keyctlx %c/%#x", c, c));
+	Ctl: con -16r60;
+	case c {
+	Ctl+'x' =>
+		{} # xxx think of something useful
+	'p' =>
+		s := tkget().s;
+		if(plumb(s)) {
+			histput(s);
+			tkedit(0, len s, "", 0);
+		}
+	'\n' =>
+		spawn wmrun(tkget().s);
+		s := tkget().s;
+		histput(s);
+		tkedit(0, len s, "", 0);
+	'x' =>
+		dflag = !dflag;
+	'.' =>
+		if(job == nil)
+			run(sprint("{echo ..; ls -F} | mc -c %d\n", tktextwidth()));
+	'F' =>
+		if(job == nil)
+			run(sprint("find -/f . | mc -c %d\n", tktextwidth()));
+	'f' =>
+		if(job == nil)
+			run(sprint("find -/f -T .hg -N '*.dis' -N '*.sbl' . | mc -c %d\n", tktextwidth()));
+	'd' =>
+		if(job == nil)
+			run(sprint("find -/F -T .hg . | mc -c %d\n", tktextwidth()));
+	}
+	tksetedit(Einsert);
+}
+
+tkinsert(c: int)
+{
+if(dflag) warn(sprint("tkinsert %c/%#x", c, c));
+	e := tkget();
+	i := ei := e.i;
+	if(tkcmd(".e.input selection present") == "1") {
+		i = int tkcmd(".e.input index sel.first");
+		ei = int tkcmd(".e.input index sel.last");
+	}
+	tkedit(i, ei, sprint("%c", c), i+1);
+}
+
+cmd(s: string)
+{
+	case s {
+	"scroll" =>
+		tkscrollset(!autoscroll);
+	"markup" =>
+		tkmarkupset(!markup);
+	"send" =>
+		r := tkcmd(focus+" tag ranges sel");
+		if(r != nil)
+			r = tkcmd(focus+" get "+r);
+		else
+			r = tkclient->snarfget();
+		histput(r);
+		ss := ref Str(r, 0, 0, 0);
+		if(!ss.findcl("\n"))
+			r += "\n";
+		input.add(array of byte r);
+		io();
+	}
+}
+
+io()
+{
+	for(;;) {
+		if(input.empty())
+			break;
+
+		if(job == nil)
+			run(string input.take());
+		else if(!reads.empty()) {
+			r := reads.take();
+			d := input.first.e;
+			if(r.n < len d) {
+				input.first.e = d[r.n:];
+				r.c <-= (d=d[:r.n], nil);
+			} else
+				r.c <-= (d=input.take(), nil);
+			textio(Tin, d);
+		} else
+			break;
+	}
+	fg := "white";
+	bg: string;
+	if(job == nil)
+		(fg, bg) = ("black", "#dddddd");
+	else if(input.empty() && reads.empty())
+		bg = "green";
+	else if(!reads.empty())
+		bg = "blue";
+	else
+		bg = "red";
+	tkcmd(sprint(".e.io configure -fg %s -bg %s ", fg, bg));
+}
+
+runinit(argv: list of string)
+{
+	if(job != nil)
+		raise "already running";
+
+	s := str->quoted(argv);
+	histput(s);
+	text(Tcmd, s);
+	l: list of ref Listnode;
+	for(; argv != nil; argv = tl argv)
+		l = ref Listnode(nil, hd argv)::l;
+	l = rev(l);
+	spawn new(l, nil, pidc := chan[1] of int);
+	job = ref Job(<-pidc, s);
+}
+
+run(s: string)
+{
+	if(job != nil)
+		raise "already running";
+
+	(n, err) := sh->parse(s);
+	if(err == nil && n == nil)
+		return;
+
+	text(Tcmd, s);
+
+	spawn new(list of {ref Listnode(n, nil)}, err, pidc := chan[1] of int);
+	job = ref Job(<-pidc, s);
+}
+
+new(args: list of ref sh->Listnode, err: string, pidc: chan of int)
+{
+	sys->pctl(Sys->NEWFD|sys->NEWPGRP, nil);
+	pidc <-= pid();
+	if(err != nil) {
+		statusc <-= err;
+		return;
+	}
+	fd0 := sys->open("/dev/cons", sys->OREAD);
+	fd1 := sys->open("/dev/cons", sys->OWRITE);
+	fd2 := sys->open("/dev/conserr", sys->OWRITE);
+	if(fd0 == nil || fd1 == nil || fd2 == nil) {
+		exc <-= sprint("open stdin/out/err: %r");
+		return;
+	}
+	{
+		nsh := shctxt.copy(1);
+		err = nsh.run(args, 0);
+		shctxt = nsh;
+		statusc <-= err;
+	} exception x {
+	"fail:*" =>
+		exc <-= x;
+	}
+}
+
+wmrun(s: string)
+{
+	argv := "wm/run"::"--"::str->unquoted(s);
+	wmrunv(argv);
+}
+
+wmrunv(argv: list of string)
+{
+	sh->run(drawctxt, argv);
+}
+
+plumb(s: string): int
+{
+	if(!plumbed)
+		return 0;
+	m := ref Msg("WmRun", "", workdir(), "text", "", array of byte s);
+	return m.send() >= 0;
+}
+
+plumbpath(p: string)
+{
+	if(p == nil)
+		return;
+	(ok, d) := sys->stat(p);
+	if(ok >= 0 && (d.mode & Sys->DMDIR)) {
+		if(job != nil)
+			spawn wmrunv(list of {"wm/run", "sh", "-c", sprint("load std; cd %q && {echo ..; ls -F} | mc", p)});
+		else
+			run(sprint("load std; cd %q && {echo ..; ls -F} | mc -c %d\n", p, tktextwidth()));
+	} else {
+		if(!plumb(p) && p[len p-1] == ':')
+			plumb(p[:len p-1]);
+	}
+}
+
+finished(t: int, s: string)
+{
+	text(t, s);
+	tkclient->settitle(top, "run "+workdir());
+	job = nil;
+	io();
+}
+
+tags := array[] of {"in", "out", "err", "cmd", "status", "ok"};
+tagcolors := array[] of {"#0000ff", "white", "orange", "lime", "red", "yellow"};
+tktags(on: int)
+{
+	for(i := 0; i < len tags; i++) {
+		c := "white";
+		if(on)
+			c = tagcolors[i];
+		tkcmd(sprint(".out tag configure %s -fg %s -bg black", tags[i], c));
+	}
+	tkcmd(".out tag raise sel");
+}
+
+# text, all but stdin,stdout,stderr
+textpre := array[] of {
+"% ", "", "", "", "# ", "# ", "# ", "# ok",
+};
+text(t: int, s: string)
+{
+	if(!markup && t > Terr)
+		return;
+	if(markup || t == Tcmd)
+		s = textpre[t]+s;
+	if(t != Tcmd)
+		s += "\n";
+	tktext(t, s);
+}
+
+# only stdin,stdout,stderr
+leftovers := array[3] of array of byte;
+textio(t: int, buf: array of byte)
+{
+	if(t == Tin && editmode == Eraw)
+		return;
+	i := t-Tin;
+	if(len leftovers[i] == 0)
+		s := string buf;
+	else
+		(s, leftovers[i]) = utf(leftovers[i], buf);
+	tktext(t, s);
 }
 
 # a is leftover, b is new data.  make utf-8 string, and return remaining trailing data
@@ -456,923 +1172,363 @@ utf(a, b: array of byte): (string, array of byte)
 	return (s, r);
 }
 
-cmdclearfd(cmd: ref Cmd, f: int)
+tktext(t: int, s: string)
 {
-	kill(cmd.pids[f]);
-	cmd.f[f] = nil;
-	tklabel(".s.f"+string f, "");
-	if(cmd.f[0] == nil && cmd.f[1] == nil && cmd.f[2] == nil)
-		tkup();  # do 1 update when prog is done
+	scroll := autoscroll && tkcmd(".out dlineinfo {end -1c linestart}") != nil;
+	tag := tagstrs[t];
+	tkcmd(".out insert end '"+s);
+
+	otag := tkcmd(sprint(".out tag names {end -%dc}", len s));
+	if(otag != nil)
+		tkcmd(sprint(".out tag remove %s {end -%dc} end", otag, len s));
+	tkcmd(sprint(".out tag add %s {end -%dc} end", tag, len s));
+
+	n := int tkcmd(".out index end")-Histsize;
+	if(0 && n > 0)
+		tkcmd(sprint(".out delete 1.0 {%d.0-1c}", n));
+
+	if(scroll)
+		tkcmd(".out see end");
 }
 
-# for threads that got new fd table
-warner()
+histput(s: string)
 {
-	for(;;)
-		warn(<-warnc);
+	history.last.e = s;
+	history.add("");
+	histcur = history.last;
 }
 
-# mouse on text widgets
-mouse(m: string)
+histprev(): int
 {
-	(nil, l) := sys->tokenize(m, " ");
-	b := int hd l;
-	w := hd tl l;
-	coord := hd tl tl l;
-	pos := tkcmd(sprint("%s index %s", w, coord));
-	say(sprint("lastmouse %d, b %d, widget %s, coord %s, pos %s", lastmouse, b, w, coord, pos));
-	if(str->prefix("!", pos))
-		return;
-
-	b1: con 1<<0;
-	b2: con 1<<1;
-	b3: con 1<<2;
-
-	if((b & b1) && (b & b2) && (~lastmouse & b2)) {
-		tkclient->snarfput(tkcmd(sprint("%s get sel.first sel.last", w)));
-		tkcmd(sprint("%s delete sel.first sel.last", w));
-	}
-	else if((b & b1) && (b & b3) && (~lastmouse & b3)) {
-		tkcmd(sprint("%s delete sel.first sel.last", w));
-		t := tkclient->snarfget();
-		tkcmd(sprint("%s insert insert '%s", w, t));
-		tkcmd(sprint("%s tag add sel {insert -%dc} insert", w, len t));
-	}
-	else if((lastmouse & b3) && (~b & b3) && ((lastmouse|b) & (b1|b2)) == 0) {
-		if(downb3 != pos)
-			path := tkcmd(w+" get sel.first sel.last");
-		else {
-			t := tkcmd(w+sprint(" get {%s linestart} {%s lineend}", pos, pos));
-			o := int str->splitstrr(pos, ".").t1;
-			for(si := o; si > 0 && !str->in(t[si-1], Whitespace); si--)
-				{}
-			for(ei := o; ei < len t && !str->in(t[ei], Whitespace); ei++)
-				{}
-			path = t[si:ei];
-		}
-		if(path != nil) {
-			dir := path;
-			if(!curcmd.e.busy && !isabs(path) && curcmd.e.wd != workdir())
-				dir = curcmd.e.wd+"/"+dir;
-			(ok, d) := sys->stat(dir);
-			if(ok >= 0 && (d.mode & Sys->DMDIR)) {
-				if(runpid)
-					spawn new(list of {"sh", "-c", sprint("load std; cd %q && {echo ..; ls} | mc", dir)});
-				else
-					start(sprint("load std; cd %q && {echo ..; ls} | mc -c %d", dir, tktextwidth()));
-			} else {
-				if(!plumb(path) && path[len path-1] == ':')
-					plumb(path[:len path-1]);
-			}
-		}
-	}
-	else if((b & b3) && ((lastmouse|b) & (b1|b2)) == 0) {
-		if(~lastmouse & b3) {
-			tkcmd(sprint("%s mark set insert %s", w, pos));
-			tkcmd(w+" tag remove sel 1.0 end");
-		}
-		else if(lastb3 != pos) {
-			tkcmd(w+" tag remove sel 1.0 end");
-			(s, e) := (downb3, pos);
-			(l0, c0) := str->splitstrl(s, ".");
-			(l1, c1) := str->splitstrl(e, ".");
-			if(c0 != nil) c0 = c0[1:];
-			if(c1 != nil) c1 = c1[1:];
-			if(int l1 < int l0 || (int l1 == int l0 && int c1 < int c0))
-				(s, e) = (e, s);
-			tkcmd(sprint("%s tag add sel %s %s", w, s, e));
-		}
-	}
-
-	if(b & b1) lastb1 = pos;
-	if(b & b2) lastb2 = pos;
-	if(b & b3) lastb3 = pos;
-	if((b & b1) && (~lastmouse & b1)) downb1 = pos;
-	if((b & b2) && (~lastmouse & b2)) downb2 = pos;
-	if((b & b3) && (~lastmouse & b3)) downb3 = pos;
-	lastmouse = b;
-}
-
-# mouse on input entry
-eprevb: int;
-especial: int;
-emouse(m: string)
-{
-	l := sys->tokenize(m, " ").t1;
-	b := int hd l;
-	coord := hd tl l;
-	pos := tkcmd(".e.edit index "+coord);
-	say(sprint("emouse, b %d, coord %s, pos %s", b, coord, pos));
-	if(str->prefix("!", pos))
-		return;
-
-	b1, b2, b3: con 1<<iota;
-
-	if((b&b1) && (b&b2) && (~eprevb&b2) && (~especial&b2)) {
-		recordundo();
-		keys = nil;
-		editmode = Einsert;
-		tkseteditmode();
-		keyeditorig = tkeditstr();
-
-		t: string;
-		if(tkcmd(".e.edit selection present") == "1") {
-			t = tkcmd(".e.edit get");
-			s := tkcmd(".e.edit index sel.first");
-			e := tkcmd(".e.edit index sel.last");
-			t = t[int s:int e];
-			tkcmd(".e.edit delete sel.first sel.last");
-		}
-		tkclient->snarfput(t);
-		especial |= b2;
-	}
-	else if((b&b1) && (b&b3) && (~eprevb&b3) && (~especial&b3)) {
-		recordundo();
-		keys = nil;
-		editmode = Einsert;
-		tkseteditmode();
-		keyeditorig = tkeditstr();
-
-		t := tkclient->snarfget();
-		if(tkcmd(".e.edit selection present") != "1")
-			s := e := int tkcmd(".e.edit index insert");
-		else {
-			s = int tkcmd(".e.edit index sel.first");
-			e = int tkcmd(".e.edit index sel.last");
-			if(s > e)
-				(s, e) = (e, s);
-			tkcmd(sprint(".e.edit delete %d %d", s, e));
-		}
-		tkcmd(sprint(".e.edit insert %d '%s", s, t));
-		tkcmd(sprint(".e.edit selection range %d {%d +%dc}", s, s, len t));
-		tkcmd(sprint(".e.edit icursor %d", s));
-		especial |= b3;
-	}
-	else if(!especial && (~b&b1) && (eprevb&b1))
-		tkcmd(sprint(".e.edit icursor %s", pos));
-
-	eprevb = b;
-	if(b == 0)
-		especial = 0;
-}
-
-plumb(s: string): int
-{
-	if(!plumbed)
+	if(histcur.prev == nil)
 		return 0;
-	# for old commands, we plumb from the dir the command finished in
-	if(curcmd != nil && !curcmd.e.busy)
-		wd := curcmd.e.wd;
-	else
-		wd = workdir();
-	m := ref Msg ("WmRun", "", wd, "text", "", array of byte s);
-	return m.send() >= 0;
-}
-
-cmd(s: string): int
-{
-	case s {
-	"pgup" or
-	"pgdown" or
-	"home" or
-	"end" =>
-		{}
-	* =>
-		tkcompletehide();
-	}
-	case s {
-	"next" =>
-		if(curcmd != nil && curcmd.next != nil) {
-			curcmd = curcmd.next;
-			redraw();
-		}
-	"prev" =>
-		if(curcmd != nil && curcmd.prev != nil) {
-			curcmd = curcmd.prev;
-			redraw();
-		}
-	"eof" =>
-		if(!runpid)
-			return 1;
-		if(curcmd == nil)
-			break;
-		text.append(array of byte "");
-		respondreads(curcmd.e);
-	"del" =>
-		if(runpid)
-			killprog();
-	"pgup" or
-	"pgdown" =>
-		n := -1;
-		if(s == "pgdown")
-			n = 1;
-		if(showcomplete)
-			w := ".c.complete";
-		else
-			w = sprint(".t.%s.t", textwidgets[textfocus]);
-		tkcmd(sprint("%s yview scroll %d pages", w, n));
-	"home" =>
-		if(showcomplete)
-			tkcmd(".c.complete see 1.0");
-		else
-			tkcmd(sprint(".t.%s.t see cmdstart", textwidgets[textfocus]));
-	"end" =>
-		if(showcomplete)
-			tkcmd(".c.complete see end");
-		else
-			tkcmd(sprint(".t.%s.t see end", textwidgets[textfocus]));
-	"esc" =>
-		case editmode {
-		Einsert =>
-			recordundo();
-			editmode = Eesc;
-			tkseteditmode();
-		Ectlx =>
-			editmode = Einsert;
-			tkseteditmode();
-		Eesc =>
-			keys = nil;
-		}
-	"x" =>
-		case editmode {
-		Ectlx =>
-			{}
-		Eesc or
-		Einsert =>
-			keys = nil;
-			editmode = Ectlx;
-			tkseteditmode();
-		}
-	* =>
-		if(str->prefix("cycle ", s)) {
-			case s[len "cycle ":] {
-			"showhist" =>
-				showhist = !showhist;
-				tksetshowhist();
-				redraw();
-			"showin" =>
-				toggleshowin();
-			"showcolors" =>
-				showcolors = !showcolors;
-				tktags(showcolors);
-				tksetshowcolors();
-			"splitmode" =>
-				tksplitmodeset((splitmode+1)%3);
-			"autoscroll" =>
-				autoscroll = !autoscroll;
-				tksetscroll();
-			* =>
-				raise "other cycle";
-			}
-		} else
-			warn(sprint("other cmd %q", s));
-	}
-	return 0;
-}
-
-progdone(t: int, s: string)
-{
-	runpid = 0;
-	history.last.e.f = array[3] of ref Sys->FileIO;
-	tklabel(".s.f0", "");
-	tklabel(".s.f1", "");
-	tklabel(".s.f2", "");
-	cmdadd(history.last.e, t, s);
-	history.last.e.wd = workdir();
-	reads = reads.new();
-	text = text.new();
-	tksetmode();
-}
-
-killprog()
-{
-	killgrp(runpid);
-	pids := history.last.e.pids;
-	for(i := 0; i < len pids; i++)
-		kill(pids[i]);
-	progdone(Tstatus, "killed");
-}
-
-new(argv: list of string)
-{
-	if(showin)
-		argv = "-i"::argv;
-	if(showhist)
-		argv = "-h"::argv;
-	if(!showcolors)
-		argv = "-C"::argv;
-	if(!autoscroll)
-		argv = "-S"::argv;
-	argv = sprint("-%c", splitmode+'1')::argv;
-	if(dflag)
-		argv = "-d"::argv;
-	argv = "wm/run"::argv;
-	sh->run(drawcontext, argv);
-}
-
-ctlx(c: int)
-{
-	case c {
-	'p' =>
-		s := tkeditstr().s;
-		if(plumb(s))
-			tkedit(0, len s, "", 0);
-	'n' =>
-		s := tkeditstr().s;
-		tkedit(0, len s, "", 0);
-		if(s != nil)
-			argv := list of {"sh", "-c", s};
-		spawn new(argv);
-	'z' =>
-		if(curcmd == nil)
-			break;
-		while(history.first != nil && history.first != curcmd)
-			history.takefirst();
-	'r' =>
-		if(runpid)
-			break;
-		text.append(array of byte tktextsel());
-		text.append(array of byte "");
-		start("sh -n");
-	'\n' =>
-		if(runpid)
-			break;
-		x := tkeditstr();
-		if(x.s == nil)
-			break;
-		tkedit(0, len x.s, "", 0);
-		text.append(array of byte tktextsel());
-		text.append(array of byte "");
-		start(x.s);
-	'c' =>
-		showcolors = !showcolors;
-		tktags(showcolors);
-		tksetshowcolors();
-	's' =>
-		autoscroll = !autoscroll;
-		tksetscroll();
-	'x' =>
-		dflag = !dflag;
-	'0' =>
-		curcmd = history.first;
-		if(curcmd != nil)
-			redraw();
-	'$' =>
-		curcmd = history.last;
-		if(curcmd != nil)
-			redraw();
-	'k' =>
-		if(runpid)
-			killprog();
-	'1' to '3' =>
-		tksplitmodeset(c-'1');
-	'!' =>
-		if(splitmode > Msingle && showin)
-			tktextfocus(0);
-	'@' =>
-		if(splitmode >= Msplit2)
-			tktextfocus(1);
-	'#' =>
-		if(splitmode >= Msplit3)
-			tktextfocus(2);
-	'i' =>
-		toggleshowin();
-	'h' =>
-		showhist = !showhist;
-		tksetshowhist();
-		redraw();
-	'l' =>
-		redraw();
-	'.' =>
-		if(!runpid)
-			start(sprint("{echo ..; ls} | mc -c %d", tktextwidth()));
-	'F' =>
-		if(!runpid)
-			start(sprint("find -f . | mc -c %d", tktextwidth()));
-	'f' =>
-		if(!runpid)
-			start(sprint("find -f -T .hg -N '*.dis' -N '*.sbl' . | mc -c %d", tktextwidth()));
-	'd' =>
-		if(!runpid)
-			start(sprint("find -F -T .hg . | mc -c %d", tktextwidth()));
-	* =>
-		say("bad ctlx command");
-	}
-	editmode = Einsert;
-	tkseteditmode();
-}
-
-toggleshowin()
-{
-	if(splitmode != Msplit2 && splitmode != Msplit3)
-		return;
-	if(showin)
-		tkcmd("pack forget .t.in");
-	else
-		tkcmd("pack .t.in -before .t.outerr -fill both -expand 1");
-	showin = !showin;
-	tksetshowin();
-}
-
-recordundo()
-{
-	e := tkeditstr();
-	if(e.s != keyeditorig.s) {
-		keyeditprev = keyeditorig::keyeditprev;
-		keyeditnext = nil;
-	}
-}
-
-ctrlv: int;
-key(c: int)
-{
-	say(sprint("key, c %c, editmode %d", c, editmode));
-
-	if(editmode == Ectlx)
-		return ctlx(c);
-
-	if(c == 'v'-16r60) {
-		ctrlv = 1;
-		return;
-	}
-	v := ctrlv;
-	ctrlv = 0;
-	e := tkeditstr();
-	if(c == '\n' && !v) {
-		tkcompletehide();
-		if(e.s == nil)
-			return;
-		tkedit(0, len e.s, "", 0);
-		if(runpid) {
-			text.append(array of byte (e.s+"\n"));
-			respondreads(curcmd.e);
-		} else
-			start(e.s);
-		editmode = Einsert;
-		tkseteditmode();
-		return;
-	}
-
-	if(editmode == Einsert) {
-		if(!v)
-		case c {
-		'\t' =>
-			si := (ref *e).rskipcl(Nonwhitespace);
-			ei := (ref *e).skipcl(Nonwhitespace);
-			complete(e.s, si, ei);
-			return;
-		kb->Up =>
-			histprev(e);
-			return;
-		kb->Down =>
-			histnext(e);
-			return;
-		}
-		i := ei := e.i;
-		if(tkcmd(".e.edit selection present") == "1") {
-			i = int tkcmd(".e.edit index sel.first");
-			ei = int tkcmd(".e.edit index sel.last");
-		}
-		tkedit(i, ei, sprint("%c", c), i+1);
-		return;
-	}
-
-	if(keys == nil)
-		keys = ref Str;
-	keys.s[len keys.s] = c;
-	keys.i = 0;
-	keyeditorig = ref *e;
-
-	{
-		change := esc(keys, e);
-		if(keys.s != ".")
-			prevkeys = keys;
-		if(change)
-			recordundo();
-		keys = nil;
-	} exception ex {
-	"more:*" =>
-		say("key: "+ex);
-	"bad:*" =>
-		say("key: "+ex);
-		keys = nil;
-	}
-}
-
-histprev(e: ref Str): int
-{
-	if(edithist == nil && history.last == nil || edithist != nil && edithist.prev == nil)
-		return 0;
-	if(edithist == nil) {
-		edithist = history.last;
-		editorig = e.s;
-		editorigpos = e.i;
-	} else
-		edithist = edithist.prev;
-	tkedit(0, len e.s, edithist.e.cmd, 0);
+	if(histcur == history.last)
+		history.last.e = tkget().s;
+	histcur = histcur.prev;
+	tkcmd(".e.input delete 0 end; .e.input insert 0 '"+histcur.e);
+	tkcmd(".e.input icursor 0");
 	return 1;
 }
 
-histnext(e: ref Str): int
+histnext(): int
 {
-	if(edithist == nil)
+	if(histcur.next == nil)
 		return 0;
-	if(edithist == history.last) {
-		edithist = nil;
-		tkedit(0, len e.s, editorig, editorigpos);
-		return 0;
-	}
-	if(edithist.next == nil)
-		return 0;
-	edithist = edithist.next;
-	tkedit(0, len e.s, edithist.e.cmd, 0);
+	histcur = histcur.next;
+	tkcmd(".e.input delete 0 end; .e.input insert 0 '"+histcur.e);
+	c := "0";
+	if(histcur.next == nil)
+		c = "end";
+	tkcmd(".e.input icursor "+c);
 	return 1;
 }
 
-start(x: string)
+tkscrollset(on: int)
 {
-	if(runpid)
-		raise "cannot start while command is running";
-	
-	if(x == nil)
-		return;
-	(n, err) := sh->parse(x);
-	if(err == nil && n == nil)
-		return;
-	cmd := ref Cmd (++cmdgen, array[3] of ref Sys->FileIO, array[3] of {* => -1}, "", x, 0, "", "", nil);
-	history.append(cmd);
-	curcmd = history.last;
-
-	spawn run(cmd, list of {ref Listnode (n, nil)}, err, pidc := chan of (int, string));
-	p: int;
-	(p, err) = <-pidc;
-	if(err != nil)
-		return progdone(Tstatus, x);
-	runpid = p;
-	tksetmode();
-	cmdadd(cmd, Tcmd, x);
-	edithist = nil;
-	keyeditorig = ref Str ("", 0, 0, 0);
-	keyeditprev = keyeditnext = nil;
+	autoscroll = on;
+	l := "scroll";
+	if(autoscroll)
+		l = "no"+l;
+	tkcmd(".m entryconfigure 0 -label "+l);
 }
 
-F: adt {
-	io,
-	e:	ref Sys->FileIO;
-	fd0,
-	fd1,
-	fd2:	ref Sys->FD;
-};
-
-fioerr(rc: chan of (ref F, string), s: string)
+tkmarkupset(on: int)
 {
-	rc <-= (nil, s);
+	markup = on;
+	tktags(markup);
+	l := "markup";
+	if(markup)
+		l = "no"+l;
+	tkcmd(".m entryconfigure 1 -label "+l);
 }
 
-mkfio(rc: chan of (ref F, string))
+editmodes: con " [xr";
+tksetedit(m: int)
 {
-	sys->pctl(Sys->FORKNS, nil);
-	if(sys->bind("#s", "/chan", Sys->MREPL) < 0)
-		return fioerr(rc, sprint("bind: %r"));
-	io := sys->file2chan("/chan", "io");
-	if(io != nil)
-		e := sys->file2chan("/chan", "e");
-	if(io == nil || e == nil)
-		return fioerr(rc, sprint("file2chan: %r"));
-	fd0 := sys->open("/chan/io", Sys->OREAD);
-	if(fd0 != nil)
-		fd1 := sys->open("/chan/io", Sys->OWRITE);
-	if(fd1 != nil)
-		fd2 := sys->open("/chan/e", Sys->OWRITE);
-	if(fd2 == nil)
-		return fioerr(rc, sprint("open: %r"));
-	rc <-= (ref F (io, e, fd0, fd1, fd2), nil);
-}
-
-fread(cmd: ref Cmd, f: ref Sys->FileIO, c: chan of (ref Cmd, (int, int, int, Sys->Rread)), pidc: chan of int)
-{
-	pidc <-= pid();
-	for(;;)
-		c <-= (cmd, <-f.read);
-}
-
-fwrite(cmd: ref Cmd, f: ref Sys->FileIO, c: chan of (ref Cmd, (int, array of byte, int, Sys->Rwrite)), pidc: chan of int)
-{
-	pidc <-= pid();
-	for(;;)
-		c <-= (cmd, <-f.write);
-}
-
-run(cmd: ref Cmd, args: list of ref sh->Listnode, sherr: string, pidc: chan of (int, string))
-{
-	sys->pctl(Sys->NEWFD, nil);
-	xsay(sprint("run, %q", cmd.cmd));
-
-	spawn mkfio(rc := chan of (ref F, string));
-	(f, err) := <-rc;
-	if(err != nil) {
-		pidc <-= (-1, err);
-		return;
-	}
-
-	fpidc := chan of int;
-	spawn fread(cmd, f.io, inc, fpidc);
-	cmd.pids[0] = <-fpidc;
-	spawn fwrite(cmd, f.io, outc, fpidc);
-	cmd.pids[1] = <-fpidc;
-	spawn fwrite(cmd, f.e, errc, fpidc);
-	cmd.pids[2] = <-fpidc;
-	cmd.f = array[] of {f.io, f.io, f.e};
-
-	sys->pctl(sys->NEWPGRP, nil);
-	pidc <-= (pid(), nil);
-
-	{
-		if(sherr != nil)
-			statusc <-= sherr;
-		else {
-			# we are working on a copy of shell context,
-			# no problem if we are killed in nsh.run.
-			# we also need a Context.copy because we did pctl NEWFD above.
-			nsh := shcontext.copy(1);
-			err = nsh.run(args, 0);
-			shcontext = nsh;
-			statusc <-= err;
-		}
-	} exception x {
-	"fail:*" =>
-		exc <-= x;
-	}
-	xsay("run finished");
-}
-
-respondreads(cmd: ref Cmd)
-{
-	if(reads.first == nil || text.first == nil) {
-		tksetmode();
-		return;
-	}
-
-	while(reads.first != nil && text.first != nil) {
-		r := reads.takefirst();
-		n := min(r.count, len text.first.e);
-		d := text.first.e[:n];
-		text.first.e = text.first.e[n:];
-		if(len text.first.e == 0) {
-			text.first = text.first.next;
-			if(text.first == nil)
-				text.last = nil;
-		}
-		r.rc <-= (d, nil);
-		s: string;
-		(s, inpending) = utf(inpending, d);
-		cmdadd(cmd, Tin, s);
-	}
-	tksetmode();
-}
-
-cmdadd(cmd: ref Cmd, t: int, s: string)
-{
-	case t {
-	Tcmd =>		cmd.cmd = s;
-	Tstatus =>	cmd.status = s;
-	Tex =>		cmd.ex = s;
-	Texit =>	cmd.ex = s;
-	}
-	if(t > Tcmd)
-		cmd.busy = 0;
-	cmd.l = ref Rw (t, s)::cmd.l;
-	if(cmd == curcmd.e)
-		tkadd(t, s, autoscroll);
-}
-
-
-splitmodewidgets := array[] of {
-(array[] of {"in", "in", "in"},		array[] of {"in"}),
-(array[] of {"in", "outerr", "outerr"},	array[] of {"in", "outerr"}),
-(array[] of {"in", "outerr", "err"},	array[] of {"in", "outerr", "err"}),
-};
-tkadd(t: int, s: string, scroll: int)
-{
-	if(t == Tcmd) {
-		if(!showhist)
-			for(i := 0; i < len textwidgets; i++)
-				tkcmd(sprint(".t.%s.t delete 1.0 end", textwidgets[i]));
-		tkstatus(curcmd.e);
-		for(i = 0; i < len textwidgets; i++) {
-			w := sprint(".t.%s.t", textwidgets[i]);
-			end := tkcmd(sprint("%s index end", w));
-			tkcmd(sprint("%s mark set cmdstart %s", w, end));
-		}
-
-	} else if(t > Tcmd) {
-		if(len s > 20)
-			s = s[:20];
-		tklabel(".s.status", s);
-	}
-	if(t > Tcmd && curcmd == history.last)
-		tkclient->settitle(top, "run "+workdir());
-	if(t >= Tcmd && !showhist)
-		return;
-
-	case t {
-	Tcmd =>	s = "% "+s+"\n";
-	Tstatus or
-	Tex or
-	Texit =>
-		s = "#"+s+"\n";
-	Tok =>	s = "ok"+s+"\n";
-	}
-	if(t >= Tcmd)
-		ww := splitmodewidgets[splitmode].t1;
-	else
-		ww = array[] of {splitmodewidgets[splitmode].t0[t]};
-	for(i := 0; i < len ww; i++) {
-		w := sprint(".t.%s.t", ww[i]);
-		if(scroll)
-			isvisible := tkcmd(w+" dlineinfo {end -1c linestart}") != nil;
-		tkcmd(w+" insert end '"+s);
-		otag := tkcmd(sprint("%s tag names {end -%dc}", w, len s));
-		if(otag != nil)
-			tkcmd(sprint("%s tag remove %s {end -%dc} end", w, otag, len s));
-		tkcmd(sprint("%s tag add %s {end -%dc} end", w, tagstrs[t], len s));
-		if(scroll && isvisible)
-			tkcmd(w+" see end");
-	}
-}
-
-drawcmd(cmd: ref Cmd)
-{
-	for(l := rev(cmd.l); l != nil; l = tl l) {
-		rw := hd l;
-		tkadd(rw.t, rw.s, 0);
-	}
-}
-
-# clear text widgets and fill those used in current splitmode
-redraw()
-{
-	if(curcmd == nil)
-		return;
-	for(i := 0; i < len textwidgets; i++)
-		tkcmd(sprint(".t.%s.t delete 1.0 end", textwidgets[i]));
-
-	if(!showhist)
-		drawcmd(curcmd.e);
-	else
-		for(l := history.first; l != nil; l = l.next)
-			drawcmd(l.e);
-	for(i = 0; i < len textwidgets; i++)
-		tkcmd(sprint(".t.%s.t see end", textwidgets[i]));
-}
-
-# set new splitmode for in/out/err text widgets
-tksplitmodeset(m: int)
-{
-	l := list of {"in", "outerr", "err"};
-	for(; l != nil; l = tl l)
-		tkcmd(sprint("pack forget .t.%s", hd l));
-	case m {
-	Msingle =>
-		tkcmd("pack .t.in -fill both -expand 1");
-	Msplit2 =>
-		if(showin)
-			tkcmd("pack .t.in -fill both -expand 1");
-		tkcmd("pack .t.outerr -fill both -expand 1");
-	Msplit3 =>
-		if(showin)
-			tkcmd("pack .t.in -fill both -expand 1");
-		tkcmd("pack .t.outerr -fill both -expand 1");
-		tkcmd("pack .t.err -fill both -expand 1");
-	}
-	splitmode = m;
-	tksetsplitmode();
-	if(splitmode == Msingle)
-		tktextfocus(0);
-	else if(!showin)
-		tktextfocus(1);
-	redraw();
-}
-
-tktextfocus(n: int)
-{
-	if(n > 0 && splitmode == Msingle || n > 1 && splitmode == Msplit2)
-		raise "bad textfocus";
-	for(i := 0; i < len textwidgets; i++)
-		if(i != n)
-			tkcmd(sprint(".t.%s.s configure -bg black", textwidgets[i]));
-	tkcmd(sprint(".t.%s.s configure -bg #dddddd", textwidgets[n]));
-	textfocus = n;
-}
-
-tkcompletehide()
-{
-	if(!showcomplete)
-		return;
-	tkcmd("pack .t -before .c -fill both -expand 1");
-	tkcmd("pack forget .c");
-	tkcmd(".c.complete delete 1.0 end");
-	showcomplete = 0;
-}
-
-tkcompleteshow()
-{
-	if(showcomplete)
-		return;
-	tkcmd("pack .c -before .t -fill both -expand 1");
-	tkcmd("pack forget .t");
-	showcomplete = 1;
-}
-
-tkstatus(cmd: ref Cmd)
-{
-	tklabel(".s.gen", sprint("%5d", cmd.gen));
-	f0 := f1 := f2 := "";
-	if(cmd.f[0] != nil) f0 = "0";
-	if(cmd.f[1] != nil) f1 = "1";
-	if(cmd.f[2] != nil) f2 = "2";
-	tklabel(".s.f0", f0);
-	tklabel(".s.f1", f1);
-	tklabel(".s.f2", f2);
-	if(cmd == history.last.e)
-		st := string runpid;
-	else
-		st = cmd.status+cmd.ex; # only one is non-nil
-	tklabel(".s.status", st);
-	tklabel(".s.cmd", cmd.cmd);
-}
-
-tkeditstr(): ref Str
-{
-	e := tkcmd(".e.edit get");
-	i := int tkcmd(".e.edit index insert");
-	return ref Str (e, i, i, i);
-}
-
-# replace s-e with ns, leaving cursor at ins
-tkedit(s, e: int, ns: string, ins: int): string
-{
-	r := tkcmd(sprint(".e.edit get %d %d", s, e));
-	tkcmd(sprint(".e.edit delete %d %d; .e.edit insert %d '%s", s, e, s, ns));
-	tkcmd(sprint(".e.edit icursor %d; .e.edit see insert", ins));
-	return r;
-}
-
-tksetshowhist()		{ tkset(".s.showhist", showhist, " h"); }
-tksetshowin()		{ tkset(".s.showin", showin, " i"); }
-tkseteditmode()		{ tkset(".s.editmode", editmode, "[ x"); }
-tksetshowcolors()	{ tkset(".s.showcolors", showcolors, " c"); }
-tksetsplitmode()	{ tkset(".s.splitmode", splitmode, "123"); }
-tksetscroll()		{ tkset(".s.autoscroll", autoscroll, " s"); }
-
-tkset(w: string, v: int, opts: string)
-{
-	if(v < 0 || v >= len opts)
-		v = len opts-1;
-	s := opts[v:v+1];
-	if(s == " " && len opts == 2) {
-		s = opts[1:2];
-		tkcmd(w+" configure -fg #a0a0a0");
-	} else
-		tkcmd(w+" configure -fg black");
-	tklabel(w, s);
-}
-
-tklabel(w: string, v: string)
-{
-	tkcmd(w+" configure -text '"+v);
-}
-
-tksetmode()
-{
-	c := "#dddddd";
-	if(runpid) {
-		c = "green";
-		if(reads.first != nil)
-			c = "blue";
-		else if(text.first != nil)
-			c = "red";
-	}
-	tkcmd(".e.mode configure -bg "+c);
+	editmode = m;
+	tkcmd(sprint(".e.io configure -text {%c}", editmodes[m]));
 }
 
 tktextwidth(): int
 {
-	w := ".t.outerr.t";
-	if(splitmode == Msingle)
-		w = ".t.in.t";
-	width := int tkcmd(w+" cget -actwidth");
-	charwidth := int tkcmd(".e.mode cget -actwidth");
-	return width/charwidth;
+	w := int tkcmd(".out cget -actwidth");
+	cw := int tkcmd(".e.io cget -actwidth");
+	return w/cw;
 }
 
-tktextsel(): string
+tktextsel(w: string): string
 {
-	w := sprint(".t.%s.t", textwidgets[textfocus]);
-	ranges := tkcmd(w+ " tag ranges sel");
-	if(ranges == nil)
-		ranges = "1.0 end";
-	return tkcmd(w+ " get "+ranges);
+	r := tkcmd(w+" tag ranges sel");
+	if(r != nil)
+		r = tkcmd(w+" get "+r);
+	return r;
+}
+
+tkedit(s, e: int, ns: string, ins: int): string
+{
+	r := tkcmd(sprint(".e.input get %d %d", s, e));
+	tkcmd(sprint(".e.input delete %d %d; .e.input insert %d '%s", s, e, s, ns));
+	tkcmd(sprint(".e.input icursor %d; .e.input see insert", ins));
+	return r;
+}
+
+tkget(): ref Str
+{
+	e := tkcmd(".e.input get");
+	i := int tkcmd(".e.input index insert");
+	return ref Str(e, i, i, i);
+}
+
+tkcomplete(on: int)
+{
+	if(on && !showcomplete)
+		(o, n, f) := (".t", ".c", ".c.complete");
+	else if(!on && showcomplete) {
+		(o, n, f) = (".c", ".t", ".out");
+		tkcmd(".c.complete delete 1.0 end");
+	} else
+		return;
+	tkcmd(sprint("pack %s -before %s -fill both -expand 1", n, o));
+	tkcmd(sprint("pack forget %s", o));
+	focus = f;
+	showcomplete = on;
+}
+
+recordundo(): ref Str
+{
+	e := tkget();
+	if(viorig != nil && e.s != viorig.s) {
+		viundo = viorig::viundo;
+		viredo = nil;
+	}
+	return e;
+}
+
+complete(s: string, si, ei: int)
+{
+	w := s[si:ei];
+	if(str->prefix("'", w))
+		w = w[1:];
+	dir := names->dirname(w);
+	file := names->basename(w, nil);
+if(dflag) warn(sprint("completing in dir %q, for file prefix %q", dir, file));
+
+	r: string;
+	l := filematches(dir, file);
+	if(dir != nil && dir[len dir-1] != '/')
+		dir[len dir] = '/';
+	if(l == nil)
+		return;
+	else if(len l == 1) {
+		r = sprint("%q", dir+hd l);
+		if(r[len r-1] != '/')
+			r += " ";
+		tkcomplete(0);
+	} else {
+		pre := hd l;
+		hits := pre+"\n";
+		for(l = tl l; l != nil; l = tl l) {
+			mm := hd l;
+			hits += mm+"\n";
+			for(i := 0; i < len pre && i < len mm && pre[i] == mm[i]; i++)
+				{}
+			pre = pre[:i];
+		}
+		r = sprint("%q", dir+pre);
+		tkcmd(".c.complete delete 1.0 end");
+		tkcmd(".c.complete insert 1.0 '"+mc(hits));
+		tkcomplete(1);
+	}
+	if(si != ei)
+		tkedit(si, ei, r, si+len r);
+}
+
+filematches(p, f: string): list of string
+{
+	if(p == nil)
+		p = ".";
+	(a, n) := readdir->init(p, Readdir->NAME|Readdir->DESCENDING);
+	if(n < 0)
+		return nil;
+	l: list of string;
+	for(i := 0; i < len a; i++)
+		if(str->prefix(f, a[i].name)) {
+			s := a[i].name;
+			if(a[i].mode & Sys->DMDIR)
+				s += "/";
+			l = s::l;
+		}
+	return l;
+}
+
+mc(s: string): string
+{
+	p0 := sys->pipe(fd0 := array[2] of ref Sys->FD);
+	p1 := sys->pipe(fd1 := array[2] of ref Sys->FD);
+	if(p0 < 0 || p1 < 0) {
+		warn(sprint("pipe: %r"));
+		return s;
+	}
+
+	pidc := chan[2] of int;
+	spawn mcinit(list of {"mc", "-c", string tktextwidth()}, fd0[0], fd1[0], pidc);
+	spawn mcwrite(fd0[1], s, pidc);
+	fdx := fd1[1];
+	fd0 = fd1 = nil;
+
+	b := bufio->fopen(fdx, bufio->OREAD);
+	r: string;
+more:
+	for(;;)
+	case c := b.getc() {
+	bufio->EOF =>
+		break more;
+	bufio->ERROR =>
+		warn(sprint("read: %r"));
+		r = s;
+		break more;
+	* =>
+		r[len r] = c;
+	}
+	kill(<-pidc);
+	kill(<-pidc);
+	return r;
+}
+
+mcinit(args: list of string, fd0, fd1: ref Sys->FD, pidc: chan of int)
+{
+	pidc <-= pid();
+	sys->pctl(sys->NEWFD, list of {fd0.fd, fd1.fd, 2});
+	sys->dup(fd0.fd, 0);
+	sys->dup(fd1.fd, 1);
+	m := load Cmd "/dis/mc.dis";
+	m->init(drawctxt, args);
+}
+
+mcwrite(fd: ref Sys->FD, s: string, pidc: chan of int)
+{
+	pidc <-= pid();
+	sys->pctl(sys->NEWFD, list of {fd.fd, 2});
+	if(sys->write(fd, d := array of byte s, len d) != len d)
+		warn(sprint("mc write: %r"));
+}
+
+
+Str.more(x: self ref Str): int
+{
+	return x.i < len x.s;
+}
+
+Str.char(x: self ref Str): int
+{
+	if(!x.more())
+		return -1;
+	return x.s[x.i];
+}
+
+Str.xget(x: self ref Str): int
+{
+	if(!x.more())
+		raise "more:";
+	return x.s[x.i++];
+}
+
+Str.in(x: self ref Str, cl: string): int
+{
+	return x.more() && str->in(x.char(), cl);
+}
+
+Str.readrep(x: self ref Str, def: int): (int, string)
+{
+	if(!x.in("1-9"))
+		return (def, "");
+	s: string;
+	s[len s] = x.xget();
+	while(x.in("0-9"))
+		s[len s] = x.xget();
+	return (int s, s);
+}
+
+Str.previn(x: self ref Str, cl: string): int
+{
+	if(x.i <= 0)
+		return 0;
+	return str->in(x.s[x.i-1], cl);
+}
+
+Str.skipcl(x: self ref Str, cl: string): int
+{
+	while(x.in(cl))
+		x.i++;
+	return x.i;
+}
+
+Str.rskipcl(x: self ref Str, cl: string): int
+{
+	while(x.previn(cl))
+		x.i--;
+	return x.i;
+}
+
+Str.findcl(x: self ref Str, cl: string): int
+{
+	while(x.char() >= 0 && !x.in(cl))
+		x.i++;
+	return x.in(cl);
+}
+
+Str.rfindcl(x: self ref Str, cl: string): int
+{
+	while(x.i > 0 && !x.previn(cl))
+		x.i--;
+	return x.in(cl);
+}
+
+Str.text(x: self ref Str): string
+{
+	return sprint("Str(s %q, i %d, si %d, ei %d)", x.s, x.i, x.si, x.ei);
+}
+
+
+List[T].new(): ref List
+{
+	return ref List[T] (nil, nil);
+}
+
+List[T].add(l: self ref List, e: T)
+{
+	if(l.first == nil) {
+		l.first = l.last = ref Link[T] (nil, nil, e);
+	} else {
+		l.last.next = ref Link[T] (l.last, nil, e);
+		l.last = l.last.next;
+	}
+}
+
+List[T].take(l: self ref List): T
+{
+	e := l.first.e;
+	if(l.first == l.last)
+		l.first = l.last = nil;
+	else {
+		l.first = l.first.next;
+		l.first.prev = nil;
+	}
+	return e;
+}
+
+List[T].empty(l: self ref List): int
+{
+	return l.first == nil;
+}
+
+
+tkcmd(s: string): string
+{
+	r := tk->cmd(top, s);
+	if(dflag > 1 || r != nil && r[0] == '!')
+		warn(sprint("tkcmd: %q -> %q", s, r));
+	return r;
 }
 
 tkup()
@@ -1380,41 +1536,31 @@ tkup()
 	tkcmd("update");
 }
 
-tkcmd(s: string): string
+workdir(): string
 {
-	r := tk->cmd(top, s);
-	if(r != nil && r[0] == '!' && dflag)
-		warn(sprint("tkcmd: %q: %s", s, r));
-	if(dflag > 1)
-		say(sprint("tk: %s -> %s", s, r));
+	return sys->fd2path(sys->open(".", sys->OREAD));
+}
+
+del(l: list of int, v: int): list of int
+{
+	r: list of int;
+	for(; l != nil; l = tl l)
+		if(hd l == v) {
+			l = tl l;
+			break;
+		} else
+			r = hd l::r;
+	for(; l != nil; l = tl l)
+		r = hd l::r;
 	return r;
 }
 
-isabs(s: string): int
+rev[T](l: list of T): list of T
 {
-	return str->prefix("/", s) || str->prefix("#", s);
-}
-
-tkcmds(a: array of string)
-{
-	for(i := 0; i < len a; i++)
-		tkcmd(a[i]);
-}
-
-xwarn(s: string)
-{
-	warnc <-= s;
-}
-
-xsay(s: string)
-{
-	if(dflag)
-		xwarn(s);
-}
-
-pid(): int
-{
-	return sys->pctl(0, nil);
+	r: list of T;
+	for(; l != nil; l = tl l)
+		r = hd l::r;
+	return r;
 }
 
 min(a, b: int): int
@@ -1431,9 +1577,14 @@ max(a, b: int): int
 	return b;
 }
 
+pid(): int
+{
+	return sys->pctl(0, nil);
+}
+
 progctl(pid: int, s: string)
 {
-	sys->fprint(sys->open(sprint("/prog/%d/ctl", pid), Sys->OWRITE), "%s", s);
+	sys->fprint(sys->open(sprint("/prog/%d/ctl", pid), sys->OWRITE), "%s", s);
 }
 
 kill(pid: int)
@@ -1446,25 +1597,6 @@ killgrp(pid: int)
 	progctl(pid, "killgrp");
 }
 
-rev[T](l: list of T): list of T
-{
-	r: list of T;
-	for(; l != nil; l = tl l)
-		r = hd l::r;
-	return r;
-}
-
-say(s: string)
-{
-	if(dflag)
-		warn(s);
-}
-
-workdir(): string
-{
-	return sys->fd2path(sys->open(".", Sys->OREAD));
-}
-
 warn(s: string)
 {
 	sys->fprint(sys->fildes(2), "%s\n", s);
@@ -1473,6 +1605,5 @@ warn(s: string)
 fail(s: string)
 {
 	warn(s);
-	killgrp(pid());
 	raise "fail:"+s;
 }
