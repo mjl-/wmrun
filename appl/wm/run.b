@@ -527,7 +527,7 @@ key(c: int)
 		kb->Home =>
 			tkcmd(focus+" see 1.0");
 		kb->End =>
-			tkcmd(focus+" see end");
+			tkcmd(sprint("%s scan mark 0 0; %s scan dragto -10000 -10000", focus, focus));
 		Ctl+'v' =>
 			ctlv = 1;
 		16r7f or
@@ -1188,7 +1188,7 @@ tktext(t: int, s: string)
 		tkcmd(sprint(".out delete 1.0 {%d.0-1c}", n));
 
 	if(scroll)
-		tkcmd(".out see end");
+		tkcmd(".out scan mark 0 0; .out scan dragto -10000 -10000");
 }
 
 histput(s: string)
