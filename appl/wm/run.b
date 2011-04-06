@@ -202,8 +202,13 @@ init(ctxt: ref Draw->Context, args: list of string)
 		}
 	args = arg->argv();
 
+	spawn main(args);
+}
+
+main(args: list of string)
+{
 	tkclient->init();
-	(top, wmctl) = tkclient->toplevel(ctxt, "", "run "+workdir(), Tkclient->Appl);
+	(top, wmctl) = tkclient->toplevel(drawctxt, "", "run "+workdir(), Tkclient->Appl);
 
 	cmdc := chan of string;
 	keyc := chan of string;
