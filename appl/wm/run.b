@@ -430,7 +430,7 @@ if(dflag) warn(sprint("lastb %x, b %d, widget %s, coord %s, pos %s", lastb, b, w
 		tkcmd(sprint("%s tag add sel {insert -%dc} insert", w, len t));
 		bspecial |= b3;
 	}
-	else if(!isb1 && !wasb2 && isb2) {
+	else if(!isb1 && isb2) {
 		tkcmd(sprint(".m post %d %d", int x-10, int y-5));
 	}
 	else if(wasb3 && !isb3 && !(isb1|isb2|wasb1|wasb2)) {
