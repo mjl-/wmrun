@@ -154,6 +154,8 @@ tkcmds0 := array[] of {
 "pack .e	-fill x",
 
 "menu	.m",
+# keep indices in sync with tkscrollset & tkmarkupset
+".m add command -label clear -command {send cmd clear}",
 ".m add command -label noscroll -command {send cmd scroll}",
 ".m add command -label nomarkup -command {send cmd markup}",
 ".m add command -label send -command {send cmd send}",
@@ -960,6 +962,8 @@ if(dflag) warn(sprint("tkinsert %c/%#x", c, c));
 cmd(s: string)
 {
 	case s {
+	"clear" =>
+		tkcmd(focus+" delete 1.0 end");
 	"scroll" =>
 		tkscrollset(!autoscroll);
 	"markup" =>
@@ -1229,7 +1233,7 @@ tkscrollset(on: int)
 	l := "scroll";
 	if(autoscroll)
 		l = "no"+l;
-	tkcmd(".m entryconfigure 0 -label "+l);
+	tkcmd(".m entryconfigure 1 -label "+l);
 }
 
 tkmarkupset(on: int)
@@ -1239,7 +1243,7 @@ tkmarkupset(on: int)
 	l := "markup";
 	if(markup)
 		l = "no"+l;
-	tkcmd(".m entryconfigure 1 -label "+l);
+	tkcmd(".m entryconfigure 2 -label "+l);
 }
 
 editmodes: con " [xr";
