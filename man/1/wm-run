@@ -19,16 +19,16 @@ It reads input and write it to the programs, and reads their output and displays
 It is similar to
 .IR wm-sh (1)
 but with several distinctive features:
-.IP \(bu
+.IP \(bu 2
 Command/input history.
-.IP \(bu
+.IP \(bu 2
 .L Del
 kills the currently running command.
-.IP \(bu
+.IP \(bu 2
 File name completion with the tab key.
-.IP \(bu
+.IP \(bu 2
 Show stdin/out/err, and exceptions differently.
-.IP \(bu
+.IP \(bu 2
 Vi-like command-line editing.
 
 .SS Options:
@@ -50,7 +50,7 @@ With markup, commands and exit statuses are printed (in color), and stdin/out/er
 .TP
 .B -S
 Do not automatically scroll the text view.
-.PP
+.SS Interface
 .I Wm/run
 shows input written to commands and output read from commands to the main text area.
 When completing a file name, this text area is temporarily replaced by a text area showing the completion matches.
@@ -146,6 +146,23 @@ Compactly display most files in the file tree.
 .TP
 .B "^x d"
 Compactly display only directories in the file tree.
+
+.SS Menu
+Clicking with button 2 on the text area shows a menu.
+It holds four entries:
+.TP
+.B clear
+Clears the text area.
+.TP
+.B scroll/noscroll
+Toggles automatic scrolling when text is appended.
+The text area is only scrolled when its last line was visible before the new text was appended.
+.TP
+.B markup/nomarkup
+Toggles showing colors and exceptions.
+.TP
+.B send
+Act as if the selected text, or the snarf buffer if there is no selection, was typed in the input entry.
 
 .SH INPUT
 The input entry accepts most standard Inferno Tk bindings, but also has a vi-like editing mode inspired by
