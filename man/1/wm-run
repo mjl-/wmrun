@@ -39,6 +39,11 @@ is given on the command-line, it is executed as first command.
 .B -d
 Enable debug prints.
 .TP
+.BI -f " font"
+Use
+.I font
+for the text and input widgets.
+.TP
 .B -M
 Do not show markup in output.
 With markup, commands and exit statuses are printed (in color), and stdin/out/err are printed in blue, white, orange respectively.
