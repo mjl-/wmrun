@@ -114,9 +114,9 @@ viredo: list of ref Str;
 
 focus := ".out";	# focused window, for pgup/pgdown etc commands
 
-Tcmd, Tin, Tout, Terr, Tstatus, Tex, Texit, Tok: con iota;
+Tprompt, Tcmd, Tin, Tout, Terr, Tstatus, Tex, Texit, Tok: con iota;
 tagstrs := array[] of {
-"cmd", "in", "out", "err", "status", "status", "status", "ok",
+"cmd", "cmd", "in", "out", "err", "status", "status", "status", "ok",
 };
 
 shctxt: ref Sh->Context;
@@ -275,6 +275,7 @@ main(args: list of string)
 	history = history.new();
 	history.add("");
 	histcur = history.last;
+	text(Tprompt, "");
 
 	if(args != nil)
 		runinit(args);
@@ -326,13 +327,14 @@ main(args: list of string)
 			warn("waiter quit: "+err);
 			continue;
 		}
-		if(job != nil && job.pid == pid) {
+		if(err != nil && job != nil && job.pid == pid) {
 			if(err == nil)
 				finished(Tok, "");
 			else
 				finished(Texit, mod+": "+err);
-			tkup();
-		}
+		} else if(err != nil)
+			finished(Texit, sprint("%d \"%s\":%s", pid, mod, err));
+		tkup();
 
 	(nil, n, nil, rc) := <-cons.read =>
 		# stdin
@@ -1116,6 +1118,7 @@ plumbpath(p: string)
 finished(t: int, s: string)
 {
 	text(t, s);
+	text(Tprompt, "");
 	tkclient->settitle(top, "run "+workdir());
 	job = nil;
 	io();
@@ -1136,15 +1139,15 @@ tktags(on: int)
 
 # text, all but stdin,stdout,stderr
 textpre := array[] of {
-"% ", "", "", "", "# ", "# ", "# ", "# ok",
+"% ", "", "", "", "", "# ", "# ", "# ", "# ok",
 };
 text(t: int, s: string)
 {
 	if(!markup && t > Terr)
 		return;
-	if(markup || t == Tcmd)
+	if(markup || t == Tprompt)
 		s = textpre[t]+s;
-	if(t != Tcmd)
+	if(t != Tprompt && t != Tcmd)
 		s += "\n";
 	tktext(t, s);
 }
