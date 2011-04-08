@@ -550,10 +550,6 @@ key(c: int)
 			}
 		Ctl+'d' =>
 			tkcomplete(0);
-			if(job == nil) {
-				killgrp(pid());
-				raise "fail:eof";
-			}
 			input.add(array[0] of byte);
 			io();
 		* =>
@@ -996,9 +992,14 @@ io()
 		if(input.empty())
 			break;
 
-		if(job == nil)
-			run(string input.take());
-		else if(!reads.empty()) {
+		if(job == nil) {
+			d := input.take();
+			if(len d == 0) {
+				killgrp(pid());
+				raise "fail:eof";
+			}
+			run(string d);
+		} else if(!reads.empty()) {
 			r := reads.take();
 			d := input.first.e;
 			if(r.n < len d) {
