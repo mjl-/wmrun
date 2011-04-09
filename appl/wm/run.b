@@ -1188,13 +1188,16 @@ utf(a, b: array of byte): (string, array of byte)
 tktext(t: int, s: string)
 {
 	scroll := autoscroll && tkcmd(".out dlineinfo {end -1c linestart}") != nil;
-	tag := tagstrs[t];
 	tkcmd(".out insert end '"+s);
 
-	otag := tkcmd(sprint(".out tag names {end -%dc}", len s));
-	if(otag != nil)
-		tkcmd(sprint(".out tag remove %s {end -%dc} end", otag, len s));
-	tkcmd(sprint(".out tag add %s {end -%dc} end", tag, len s));
+	tag := tagstrs[t];
+	otags := tkcmd(sprint(".out tag names {end -%dc}", len s));
+	if(otags != tag) {
+		for(l := sys->tokenize(otags, " ").t1; l != nil; l = tl l)
+			if((hd l) != "sel")
+				tkcmd(sprint(".out tag remove %s {end -%dc} end", (hd l), len s));
+		tkcmd(sprint(".out tag add %s {end -%dc} end", tag, len s));
+	}
 
 	n := int tkcmd(".out index end")-Histsize;
 	if(0 && n > 0)
