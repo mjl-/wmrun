@@ -670,6 +670,7 @@ if(dflag) warn(sprint("keyvi0, k %s, e %s", k.text(), e.text()));
 		histput(s);
 		input.add(array of byte (s+"\n"));
 		io();
+		tksetedit(Einsert);
 	'i' or
 	'I' or
 	'a' or
