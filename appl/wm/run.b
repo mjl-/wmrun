@@ -291,7 +291,10 @@ main(args: list of string)
 	s := <-top.ctxt.ctl or
 	s = <-top.wreq or
 	s = <-wmctl =>
+		scroll := str->prefix("!", s) && tkcmd(".out dlineinfo {end -1c linestart}") != nil;
 		tkclient->wmctl(top, s);
+		if(scroll)
+			tkcmd(".out scan mark 0 0; .out scan dragto -10000 -10000");
 
 	s := <-tptrc =>
 		tptr(s);
