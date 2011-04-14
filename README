@@ -42,7 +42,6 @@ mechiel lukkien, reachable at mechiel@ueber.net.
 
 # todo
 
-- try not to leave gap at the bottom after autoscroll.  poor use of screen.
 - indicate somewhere that partial utf-8 characters are lingering?
 - implement split stdin/stderr again?
 - when plumbing of text, use the directory the command finished in?  need a way to determine the dir.
