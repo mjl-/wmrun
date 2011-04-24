@@ -1146,7 +1146,7 @@ tktags(on: int)
 
 # text, all but stdin,stdout,stderr
 textpre := array[] of {
-"% ", "", "", "", "", "# ", "# ", "# ", "# ok",
+"% ", "", "", "", "", "# ", "# ", "# ", "",
 };
 text(t: int, s: string)
 {
@@ -1154,7 +1154,7 @@ text(t: int, s: string)
 		return;
 	if(markup || t == Tprompt)
 		s = textpre[t]+s;
-	if(t != Tprompt && t != Tcmd)
+	if(t != Tprompt && t != Tcmd && t != Tok)
 		s += "\n";
 	tktext(t, s);
 }
